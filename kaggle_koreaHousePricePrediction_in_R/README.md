@@ -1,5 +1,5 @@
 Kaggle competition
-link : http://bitly.kr/5vlMjB
+link : http://bitly.kr/5vlMjB<BR><BR>
 
-Competition background
+Competition background<BR>
 내 집 마련의 꿈은 누구나 가지고 있습니다. 하지만 집의 가격은 누구나 알고 있지는 않죠. 집의 가격은 주거 공간의 면적, 위치, 경관, 건물의 연식 등 여러 가지 복잡한 요인의 조합에 의해 결정됩니다. 이번에 분석하실 데이터는 20개의 변수를 가지고 있으며, 어떤 조건을 가진 집의 가격이 높고 낮은지를 예측하는 모델을 만드는 것을 목표로 합니다.

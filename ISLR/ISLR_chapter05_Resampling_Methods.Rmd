@@ -1,0 +1,235 @@
+---
+title: "ISLR_chapter05_Resampling_Methods"
+author: "Big"
+date: '2019.04.21'
+output: html_document
+---
+## Lab : 교차검증과 부트스트랩(Cross-Validation and the Bootstrap)
+
+###5.3.1 검증셋 기법(The Vaildation Set Approach)
+
+```{r}
+library(ISLR)
+set.seed(1)
+train=sample(392, 196)
+```
+* sample() 함수를 통해 392개의 관측치 중에 랜덤으로 196개를 선택하여 관측치셋을 크기가 같은 두 부분으로 분할한다.
+<br></br><br></br>
+
+```{r}
+lm.fit = lm(mpg~horsepower, data=Auto, subset=train)
+mean(
+  (Auto$mpg-predict(lm.fit, Auto))[-train]^2
+)
+```
+* predict() 함수를 사용하여 392개 관측치 모두에 대한 반응변수 값을 추정하고,
+* mean() 함수를 사용하여 검증셋 내 196개 관측치의 MSE를 계산한다.
+* -train 인덱스는 훈련셋에 없는 관측치만을 선택한다.
+* 그러므로, 선형회귀적합에 대한 추정된 검정 MSE는 26.14 이다.
+<br></br><br></br>
+
+```{r}
+lm.fit2 = lm(mpg~poly(horsepower,2), data=Auto, subset=train)
+mean(
+  (Auto$mpg - predict(lm.fit2, Auto))[-train]^2
+)
+lm.fit3 = lm(mpg~poly(horsepower,3), data=Auto, subset=train)
+mean(
+  (Auto$mpg - predict(lm.fit3, Auto))[-train]^2
+)
+```
+* poly() 함수를 사용하여 다항식 및 삼차회귀에 대한 MSE 검정오차를 추정할 수 있다.
+<br></br><br></br>
+```{r}
+set.seed(2)
+train = sample(392,196)
+lm.fit = lm(mpg~horsepower, data=Auto, subset=train)
+mean(
+  (Auto$mpg - predict(lm.fit, Auto))[-train]^2
+)
+lm.fit2 = lm(mpg~poly(horsepower,2), data=Auto, subset=train)
+mean(
+  (Auto$mpg - predict(lm.fit2, Auto))[-train]^2
+)
+lm.fit3 = lm(mpg~poly(horsepower,3), data=Auto, subset=train)
+mean(
+  (Auto$mpg - predict(lm.fit3, Auto))[-train]^2
+)
+```
+* 다항식회귀와 삼차회귀에 대한 검정오차는 각각 19.82, 19.78 이다.
+* 만약 다른 훈련셋을 선택한다면 검증셋에 대해 다른 오차를 얻을 수도 있다.
+* **set.seed() 함수를 사용하여 다른 훈련셋을 선택하였다.**
+* 이 결과는 이전에 얻은 결과와 일치한다.
+* 즉, horsepower의 이차함수를 사용하여 mpg를 예측하는 모델이 일차함수만 관련된 모델보다 성능이 더 낫다.
+* 하지만 모델이 horsepower의 삼차함수를 사용해야 할 근거는 거의 없다.
+<br></br><br></br>
+
+###5.3.2 Leave-One-Out Cross-Validation (LOOCV)
+```{r}
+glm.fit = glm(mpg~horsepower, data=Auto)
+coef(glm.fit)
+
+lm.fit = lm(mpg~horsepower, data=Auto)
+coef(lm.fit)
+```
+* LOOCV 추정치는 임의의 일반화 선형모델에 대해 glm()과 cv.glm() 함수를 사용하여 자동으로 계산될수 있다.
+* 4장에서 glm()함수는 family="binomial" 인자를 이용하여 로지스틱 회귀를 수행하는데 사용되었다.
+* 그러나, family 인자 없이 모델을 적합하면 glm()은 lm() 함수와 같다.
+<br></br><br></br>
+
+```{r}
+library(boot)
+glm.fit = glm(mpg~horsepower, data=Auto)
+cv.err = cv.glm(Auto, glm.fit)
+cv.err$delta
+```
+* 여기서는 lm() 대신에 glm()을 사용한다. 이유는 cv.glm()과 함께 사용될 수 있기 때문이다.
+* cv.glm() 함수는 boot 라이브러리에 포함되어 있다.
+* cv.glm() 함수는 몇 가지 구성요소를 가진 리스트(list)를 제공한다.
+* delta 벡터 내의 두 숫자는 교차검증 결과를 포함한다.
+* 이 예에서 두 숫자는 동일하며(소수 둘째자리 까지) (식 5.1)에 주어진 LOOCV 통계량에 해당한다.
+* 두 숫자가 다른 이유에 대해서는 아래에서 다시 논의한다.
+* 검정 오차에 대한 교차검증 추정치는 거의 24.23 이다.
+<br></br><br></br>
+
+```{r}
+cv.error=rep(0,5)
+for(i in 1:5){
+  glm.fit = glm(mpg~poly(horsepower,i), data=Auto)
+  cv.error[i] = cv.glm(Auto, glm.fit)$delta[1]
+}
+cv.error
+```
+* 이 절차는 점차 복잡한 다항식적합에 대해 반복할 수 있으며, 자동으로 수행하기 위해 for() 함수를 사용한다.
+* for 루프는 차수가 i=1...5 까지 다항식에 대한 다항식회귀적합을 반복적으로 수행하고 관련 교차검증 오차를 계산하여 그 값을 벡터 cv.error의 i번째 요소에 저장한다.
+* 이차적합으로 가면서 크게 줄어들지만, 그 이후에는 더 높은 차수의 다항식을 사용해도 개선이 뚜렷하지 않다.
+<br></br><br></br>
+
+###5.3.3 K-Fold Cross-Validation
+```{r}
+set.seed(17)
+cv.error.10 = rep(0:10)
+for(i in 1:10){
+  glm.fit = glm(mpg~poly(horsepower,i), data=Auto)
+  cv.error.10[i] = cv.glm(Auto, glm.fit, K=10)$delta[1]
+}
+cv.error.10
+```
+* cv.glm() 함수는 k-fold의 CV를 수행할때도 사용될 수 있다.
+* k값으로서 일반적으로 선택하는 k=10을 Auto 자료에 대해 사용한다.
+* 여기서도 random seed를 먼저 설정하고 1차에서 10차까지의 다항식적합에 대응하는 CV 오차를 저장할 벡터를 초기화한다.
+* 이 과정의 계산시간은 LOOCV보다 훨씬 짧다.
+* 결과를 보면 삼차 또는 그 이상의 고차 다항식을 사용해도 단순히 이차적합을 사용하는 것에 비해 검정오차가 낮아지지 않는다는 것을 알 수 있다.
+<br></br><br></br>
+
+###5.3.4 The Bootstrap
+## 통계량의 정확도 추정(Estimating The Accuracy of a Statistic of Interest)
+>* **부트스트랩 기법의 가장 장점 중 하나는 거의 모든 상황에 적용될 수 있다는 것이다.**
+>* R에서는 부트스트랩 분석을 수행하는데 2단계만 있으면 된다.
+>1. 관심있는 통계량을 계산하는 함수를 생성해야 한다.
+>2. boot 라이브러리에 포함된 boot() 함수를 사용하여 자료로부터 관측치들을 반복적으로 복원추출함으로써 부트스트랩을 수행한다.
+
+```{r}
+alpha.fn = function(data, index){
+  X = data$X[index]
+  Y = data$Y[index]
+  return(
+    ( var(Y)-cov(X,Y) / (var(X)+var(Y)-2*cov(X,Y)) )
+  )
+}
+```
+* Portfolio 자료를 이용하여 부트스트랩을 사용하는 것을 보여주려면 먼저 alpha.fn()을 생성해야 한다.
+* alpha.fn()는 (X,Y) 데이터와 어느 관측치가 알파를 추정하는데 사용되어야 하는지를 나타내는 벡터를 입력값으로 갖는다.
+* alpha.fn()는 선택된 관측치들을 기반으로 알파에 대한 추정치를 출력한다.
+<br></br><br></br>
+
+```{r}
+alpha.fn(Portfolio, 1:100)
+```
+* 이 함수는 index 인자로 지정된 관측치들에 (식 5.7)을 적용하여 알파에 대한 추정치를 반환 또는 출력한다.
+* 예를 들어, 위 명령어는 100개 관측치 모두 사용하여 알파를 추정한다.
+<br></br><br></br>
+
+```{r}
+set.seed(1)
+alpha.fn(Portfolio, sample(100,100, replace=T))
+```
+* sample() 함수를 사용하여 1에서 100까지 범위의 100개 관측치를 랜덤으로 복원추출한다.
+* 새로운 부트스트랩 데이터셋을 구성하고 이 새로운 데이터셋을 기반으로 '알파 추정치'를 다시 계산하는 것과 같다.
+<br></br><br></br>
+
+```{r}
+boot(Portfolio, alpha.fn, R=1000)
+```
+* 부트스트랩 분석은 alpha.fn() 함수를 여러번 실행하여 '알파'에 대해 대응하는 모든 추정치를 기록하고 표준편차를 계산함으로써 수행할 수 있다.
+* 하지만, boot() 함수는 이것을 자동으로 해준다.
+* R = 1,000개의 부트스트랩 추정치를 제공해준다.
+* '알파 추정치' = 0.7792916, SE('알파 추정치') = 0.1702412 을 알수 있다.
+<br></br><br></br>
+
+## 선형회귀모델의 정확도 추정(Estimating the Accuracy of a Linear Regression Model)
+>* 부트스트랩 기법은 통계학습방법의 계수 추정치 및 예측치의 변동성을 평가하는데 사용될 수 있다.
+>* 여기서는 Auto 자료에서 horsepower를 사용하여 mpg를 예측하는 선형회귀모델을 절편 'bata_0'과 기울기 'bata_1'에 대한 추정치의 변동성을 평가하기 위해 부트스트랩 기법을 사용한다.
+>* 부트스트랩을 사용하여 얻은 추정치는 3.1.2절에서 기술한 SE('추정치 bata_0')과 SE('추정치 bata_1')에 대한 식을 사용하여 얻은 것과 비교할 것이다.
+
+```{r}
+boot.fn = function(data, index){
+  return(
+    coef(
+      lm(mpg~horsepower, data=data, subset=index)
+    )
+  )
+}
+boot.fn(Auto, 1:392)
+```
+* boot.fn() 함수는 Auto 자료와 관측치들의 인덱스 셋을 입력으로하여 선형회귀모델에 대한 절편과 기울기 추정치를 반환한다.
+* 그 다음에 392개 관측치의 전체 셋에 적용해 3장의 선형회귀 공식을 사용하여 전체 자료에 'bata_0', 'bata_1'의 추정치를 계산한다.
+<br></br><br></br>
+
+```{r}
+set.seed(1)
+boot.fn(Auto, sample(392,392, replace=T))
+boot.fn(Auto, sample(392,392, replace=T))
+```
+* boot.fn() 함수는 관측치들을 랜덤으로 복원추출하여 절편과 기울기에 대한 부트스트랩 추정치를 생성하는데도 사용될 수 있다.
+<br></br><br></br>
+
+```{r}
+boot(Auto, boot.fn, 1000)
+```
+* boot() 함수를 사용하여 절편과 기울기에 대한 1,000개 부트스트랩 추정치의 표준오차를 계산한다.
+* 결과를 보면 SE('추정치 bata_0')와 SE('추정치 bata_1')에 대한 부트스트랩 추정치는 각각 0.862248138, 0.007429023 임을 알 수 있다.
+* 3.1.2절에서 논의하였듯이, 표준 공식을 사용하여 선형모델의 회귀계수에 대한 표준오차를 계산할 수 있다.
+<br></br><br></br>
+
+```{r}
+summary(lm(mpg~horsepower, data=Auto))$coef
+```
+* summary() 함수를 사용하여 표준오차를 구할 수 있다.
+* 3.1.2절의 공식을 사용하여 얻은 '추정치 bata_0', '추정치 bata_1'에 대한 표준오차는 절편의 경우 0.717498656 이고 기울기의 경우 0.006445501 이다.
+* 이 값들은 부트스트랩을 사용하여 얻은 추정치와는 다소 다르다.
+* 이것이 부트스트랩에 문제가 있음을 나타내는가? 사실은 그 반대를 의미한다.
+* 예를 들어, 표준 공식은 알려져 있지 않은 파라미터인 노이즈의 분산에 의존하며 이 값은 RSS를 사용하여 추정된다.
+* 표준오차에 대한 공식은 선형모델이 정확해야 하는 것이 아니지만 분산에대한 추정치는 정확해야 한다.
+* (그림 3.8)에서 보았듯이 데이터에는 비선형 상관관계가 있어, 선형적합의 잔차가 확대(inflated)되고, 분산 추정치도 그럴 것이다.
+* 또한, 표준 공식은(다소 비현실적으로) x_i는 고정되어 있고 모든 변동성은 오차의 변화에서 비롯된다고 가정한다.
+* 부트스트랩은 이러한 가정들을 필요로 하지 않고, 따라서 summary() 함수가 제공하는 것보다 '추정치 bata_0'와 '추정치 bata_1'의 표준오차를 더 정확하게 추정할 가능성이 높다.
+<br></br><br></br>
+
+```{r}
+boot.fn = function(data,index){
+  coefficients(
+    lm(mpg~horsepower+I(horsepower^2), data=data, subset=index)
+  )
+}
+set.seed(1)
+boot(Auto, boot.fn, 1000)
+summary(lm(mpg~horsepower+I(horsepower^2), data=Auto))$coef
+```
+* 데이터에 이차모델을 적합하여 부트스트랩 표준오차 추정치와 표준 선형회귀추정치를 계산한다.
+* 이 모델은 데이터에 잘 적합되므로(그림 3.8) 부트스트랩 추정치와 '추정치 bata_0','추정치 bata_1','추정치 bata_2'의 표준 추정치는 서로 비슷하다.
+
+
+
+
+

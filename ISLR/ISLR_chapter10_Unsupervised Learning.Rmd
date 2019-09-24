@@ -1,0 +1,430 @@
+---
+title: "ISLR_chapter10_Unsupervised Learning"
+author: "Big"
+date: '2019 4 24 '
+output: html_document
+---
+
+## Lab 1: Principal Components Analysis
+
+>* 기본 R 패키지에 포함된 USArrests 자료에 대해 PCA를 수행한다.
+
+```{r}
+states = row.names(USArrests)
+states
+```
+* 이 자료의 행은 알파벳 순으로 미국의 50개 주를 포함한다.
+<br></br><br></br>
+
+```{r}
+names(USArrests)
+```
+* 열은 4개의 변수를 포함한다.
+<br></br><br></br>
+
+```{r}
+apply(USArrests, 2, mean)
+```
+* apply() 함수는 자료의 각 행 또는 열에 어떤 함수를 적용하게 해준다.(위에서는 mean() 적용)
+* 자료에 따르면, 강간은 살인의 평균 3배이고 폭행은 강간보다 8배 이상 더 많다.
+<br></br><br></br>
+
+```{r}
+apply(USArrests, 2, var)
+```
+* apply() 함수를 사용해서 4개 변수들의 분산을 조사할 수도 있다.
+* 변수에 따라 분산이 크게 다르다.
+* UrbanPop는 각 주에서 교외 지역에 거주하는 인구 백분율을 측정하며, 이것은 각 주의 인구 10만 명당 강간횟수와는 비교될 수 없는 값이다.
+* PCA를 수행하기 전에 변수를 스케일링하지 않으면 관측하게 될 주성분의 대부분은 Assault 변수에 주어질 것이다.
+* 왜냐하면, Assault 변수가 월등하게 큰 평균, 분산을 가지기 때문이다.
+* 따라서, PCA를 수행하기 전에 변수를 표준화하여 평균이 0, 표준편차가 1이 되게 하는 것이 중요하다.
+<br></br><br></br>
+
+```{r}
+pr.out = prcomp(USArrests, scale=TRUE)
+```
+* PCA를 수행하는 R의 몇몇 함수 중 하나인 prcomp()를 사용하여 주성분분석을 수행한다.
+* 기본적으로, prcomp() 함수는 평균이 0 이 되게 변수들을 중심화 한다.
+* 그리고 scale=TRUE 함수를 사용하여 표준편차가 1이 되게 변수를 스케일링 한다.
+<br></br><br></br>
+
+```{r}
+names(pr.out)
+```
+* prcomp() 함수의 출력은 유용한 값을 포함한다.
+<br></br><br></br>
+
+```{r}
+pr.out$center
+pr.out$scale
+```
+* center 및 scale는 PCA를 구현하기 이전에 스케일링을 위해 사용된 변수의 평균과 표준편차에 해당한다.
+<br></br><br></br>
+
+```{r}
+pr.out$rotation
+```
+* rotation 행렬은 주성분로딩을 제공한다.
+* 즉, pr.out$rotation의 각 열은 대응하는 주성분로딩벡터를 포함한다.
+* 4개의 주성분이 있음을 볼 수 있다.
+* 이것은 예상된 것으로 n개 관측치와 p개 변수를 갖는 자료에서는 일반적으로 min(n-1,p)개의 주성분이 있다.
+<br></br><br></br>
+
+```{r}
+dim(pr.out$x)
+```
+* 주성분점수벡터를 얻기 위해 prcomp() 함수를 사용하여 데이터와 주성분로딩벡터를 명시적으로 곱할 필요는 없다.
+* 50 * 4 행렬 x는 주성분점수벡터를 열로서 갖는다. 즉, k번째 열은 k번째 주성분점수벡터이다.
+<br></br><br></br>
+
+```{r}
+biplot(pr.out, scale=0)
+```
+
+* 첫 2개의 주성분을 그래프로 그릴 수 있다.
+* biplot()의 scale=0 인자는 로딩을 표현하는데 화살표가 스케일링되게 한다.
+* scale에 다른 값을 사용하면 약간 다른 행렬도(biplot)가 제공된다.
+<br></br><br></br>
+
+```{r}
+pr.out$rotation = -pr.out$rotation
+pr.out$x = -pr.out$x
+biplot(pr.out, scale=0)
+```
+
+* 이 그림은 (그림 10.1)의 mirror image 이다. 주성분들은 부호변경에도 고유하므로 몇몇 작은 변화를 주어 (그림 10.1)을 다시 그릴 수 있다.
+<br></br><br></br>
+
+```{r}
+pr.out$sdev
+```
+* prcomp() 함수는 각 주성분의 표준편차도 제공한다.
+* 예를 들어, USArrests 자료에서 표준편차를 엑세스한 것이다.
+<br></br><br></br>
+
+```{r}
+pr.var = pr.out$sdev^2
+pr.var
+```
+* 각 주성분에 의해 설명되는 분산은 편차를 제곱하면 된다.
+<br></br><br></br>
+
+```{r}
+pve = pr.var / sum(pr.var)
+pve
+```
+* 각 주성분에 의해 설명되는 분산의 비율을 계산하기 위해서는 각 주성분에 의해 설명되는 분산을 4개의 주성분 모두에 의해 설명되는 총분산으로 나누면 된다.
+* 결과를 보면, 첫 번째 주성분은 데이터 내 분산의 62%를 설명하고 그 다음 주성분은 분산의 24.7%를 설명한다.
+<br></br><br></br>
+
+```{r}
+par(mfrow=c(1,2))
+plot(
+  pve,
+  xlab="Principla Component",
+  ylab="Proportion of Variance Explained",
+  ylim=c(0,1),
+  type='b'
+)
+plot(
+  cumsum(pve),
+  xlab="Principla Component",
+  ylab="Cumulative Proportion of Variance Explained",
+  ylim=c(0,1),
+  type='b'
+)
+```
+* 각 주성분에 의해 설명되는 PVE와 누적 PVE를 그래프로 나타낼 수 있다.
+<br></br><br></br>
+
+```{r}
+a = c(1,2,8,-3)
+cumsum(a)
+```
+* cumsum() 함수는 수치형 벡터 원소들을 누적합을 계산한다.
+
+## Lab 2: Clustering
+
+###10.5.1 K-Means Clustering
+
+>* kmeans() 함수는 K-Means 클러스터링을 수행한다.
+
+```{r}
+set.seed(2)
+x = matrix(rnorm(50*2), ncol=2)
+x[1:25, 1] = x[1:25, 1]+3
+x[1:25, 2] = x[1:25, 2]-4
+```
+* 2개의 클러스터가 있는 데이터 생성
+* 처음 25개와 다음 25개의 관측치는 다른 평균을 가진다.
+<br></br><br></br>
+
+```{r}
+km.out = kmeans(x,2,nstart=20)
+km.out$cluster
+```
+* K = 2 인 K-Means 클러스터링 수행
+* K-Means 클러스터링은 kmeans() 함수에 어떠한 그룹 정보도 제공하지 않았지만 관측치들을 완벽하게 2-class로 분리하였다.
+<br></br><br></br>
+
+```{r}
+plot(x, col=(km.out$cluster+1), main="K-Means Clustering Results with K=2", xlab="", ylab="", pch=20, cex=2)
+```
+* 각 관측치를 할당된 클러스터에 따라 다른 색깔로 표시하여 그래프를 나타낼수 있다.
+* 여기서는 관측치들이 2차원이므로 쉽게 그래프를 나타낼 수 있다.
+* 만약 변수의 수가 2개보다 많았으면, PCA를 수행하여 첫 2개의 주성분점수벡터들을 그래프로 그릴 수도 있다.
+<br></br><br></br>
+
+```{r}
+set.seed(4)
+km.out = kmeans(x,3,nstart=20)
+km.out
+plot(x, col=(km.out$cluster+1), main="K-Means Clustering Results with K=3", xlab="", ylab="", pch=20, cex=2)
+```
+* 실제 데이터의 경우에는 일반적으로 클러스터의 수를 모른다.
+* 기존 데이터에서 k=3인 K-Means 클러스터링을 수행할 수 있다.
+* k=3 일 떄, K-Means 클러스터링은 2-class로 분할한다.
+<br></br><br></br>
+
+```{r}
+set.seed(3)
+km.out = kmeans(x,3,nstart=1)
+km.out$tot.withinss
+km.out = kmeans(x,3,nstart=20)
+km.out$tot.withinss
+```
+* kmeans() 함수를 실행하기 위해서는 nstart 인자를 사용한다.
+* 사용된 nstart의 값이 1보다 크면 K-평균 클러스터링은 [알고리즘 10.1]의 Step 1 에서 다수의 랜덤 할당을 사용하여 수횅될 것이고, kmeans() 함수는 가장 좋은 결과를 제공할 것이다.
+* nstart = 1과 nstart = 20을 비교해본다.
+* km.out$tot.withinss는 클러스터 내 제곱합의 총합이고, K-Means 클러스터링을 수행함으로써 (식 10.11)을 최소화하고자 한다. 각 클러스터 내 제곱합은 km.out$withinss 에 포함되어 있다.
+* K-Means 클러스터링은 항상 20 또는 50과 같이 큰 값의 nstart을 가지고 실행할 것을 권장한다.
+* 왜냐하면, 그렇지 않을 경우 바람직하지 않은 국소 최적(local optimum)이 얻어질 수도 있기 대문이다.
+* K-Means 클러스터링을 수행할 때, 다수의 초기 클러스터 할당 외에도 set.seed() 함수를 사용하여 랜덤 시드를 설정하는 것이 중요하다. 이렇게 함으로써, Step 1의 초기 클러스터 할당이 반복될 수 있고 동일한 K-Means 클러스터링 결과가 얻어 질 것이다.
+<br></br><br></br>
+
+###10.5.2 Hierarchical Clustering
+ 
+>* hclust() 함수는 계층적 클러스터링을 구현한다
+>* 다음 예제에서는 10.5.1절 데이터를 사용하여 계층적 클러스터링 덴드로그램을 그린다.
+>* 이 때, 완전연결, 단일연결, 평균연결 클러스터링이 사용되고 비유사성 측도는 유클리드 거리가 사용된다.
+
+```{r}
+hc.complete = hclust(dist(x), method="complete")
+```
+* 완전연결을 사용하여 관측치를 클러스터링 한다.
+* dist() 함수는 50x50 관측치 간 유클리드 거리의 행렬을 계산한다.
+<br></br><br></br>
+
+```{r}
+hc.average = hclust(dist(x), method="average")
+hc.single = hclust(dist(x), method="single")
+```
+* 평균연결, 단일연결의 계층적 클러스터링도 쉽게 수행할 수 있다.
+<br></br><br></br>
+
+```{r}
+par(mfrow=c(1,3))
+plot(hc.complete, main="Complete Linkage", xlab="", sub="", cex=0.9)
+plot(hc.average, main="Average Linkage", xlab="", sub="", cex=0.9)
+plot(hc.single, main="Single Linkage", xlab="", sub="", cex=0.9)
+```
+
+* plot() 함수를 사용하여 얻어진 덴드로그램을 그래프로 나타낼 수 있다.
+* 그래프 아래부분의 숫자는 각 관측치를 구별한다.
+<br></br><br></br>
+
+```{r}
+cutree(hc.complete, 2)
+cutree(hc.average, 2)
+cutree(hc.single, 2)
+```
+* 각 관측치에 대해 주어진 덴드로그램 절단과 관련된 클러스터 라벨을 결정하기 위해 cutree() 함수를 사용할 수 있다.
+* 완전연결과 평균연결은 대체로 관측치들을 올바른 그룹으로 분리한다. 하지만 단일연결은 한 점을 그 자신만의 클러스터에 속하는 것으로 구분한다.
+<br></br><br></br>
+
+```{r}
+cutree(hc.single, 4)
+```
+* 더 합리적인 답은 한 원소집합(singleton)이 2개 있지만 4개의 클러스터가 선택될 때 얻어진다.
+<br></br><br></br>
+
+```{r}
+xsc = scale(x)
+plot(hclust(dist(xsc), method="complete"), main="Hierarchical Clustering with Scaled Featuress")
+```
+
+* 계층적 클러스터링을 수행하기 전에 변수를 스케일링하려면 scale() 함수를 사용한다.
+<br></br><br></br>
+
+```{r}
+x = matrix(rnorm(30*3), ncol=3)
+dd = as.dist(1 - cor(t(x)))
+plot(hclust(dd, method="complete"), main="Complete Linkage with Correlation-Based Distance", xlab="", sub="")
+```
+* 상관 기반의 거리는 as.dist() 함수를 사용하여 계산될 수 있다. 이 함수는 정방대칭행렬을 hclust() 함수가 거리행렬(distance matrix)로 인식하는 형태로 변환한다. 하지만, 이것은 적어도 3개의 변수가 있는 데이터에 대해서만 의미가 있다. 왜냐하면, 두 변수에 대한 측정치를 갖는 임의의 두 관측치 간 절대상관(absolute correlation)은 항상 1 이기 때문이다. 따라서 위소스는 3차원 자료를 클러스터링 해본다.
+<br></br><br></br>
+
+## Lab 3: NCI60 Data Example
+
+>* 비지도 기법들인 유전체(genomic) 데이터의 분석에 자주 사용되며, PCA와 계층적 클러스터링은 특히 인기있는 도구이다.
+>* NCI 암세포주 데이터를 사용하여 이러한 기법들을 살펴본다
+
+```{r}
+library(ISLR)
+nci.labs = NCI60$labs
+nci.data = NCI60$data
+dim(nci.data)
+```
+* 각 세포 주 는 암 유형을 가지고 표시된다.
+* PCA와 클러시터링을 수행한 후에는 암 유형들이 어느 정도 까지 비지도 기법의 결과와 일치하는지 검사할 것이다.
+* 자료는 64개 행과 6,830개 열을 가진다.
+<br></br><br></br>
+
+```{r}
+nci.labs[1:4]
+table(nci.labs)
+```
+*  암 유형을 조사해본다.
+<br></br><br></br>
+
+###10.6.1 PCA on the NCI60 Data
+
+```{r}
+pr.out = prcomp(nci.data, scale=TRUE)
+```
+* 표준편차가 1이 되도록 변수들을 스케일링 한 후 PCA를 수행한다.(유전자를 스케일링하지 않는 것이 낫다고 주장할 수도 있다.)
+<br></br><br></br>
+
+```{r}
+Cols = function(vec){
+  cols = rainbow(length(unique(vec)))
+  return(cols[as.numeric(as.factor(vec))])
+}
+```
+* 처음 몇몇 주성분점수벡터들을 그래프로 그려 데이터를 시각화한다.
+* 주어진 암 유형에 대응하는 관측치(세포 주)들은 동일한 색으로 표시되어 한 암 유형의 관측치들이 어느 정도까지 서로 유사한지 볼 수 있다.
+* 수치형 벡터의 각 원소에 다른 색을 할당하는 간단한 함수를 먼저 만들어본다.
+* 이 함수는 대응하는 암 유형에 기초하여 64개 각 세포 주 에 색을 할당하는데 사용될 것이다.
+* rainbow() 함수는 양의 정수를 인자로 하여 서로 다른 색의 수를 포함하는 벡터를 반환한다.
+<br></br><br></br>
+
+```{r}
+par(mfrow=c(1,2))
+plot(pr.out$x[,1:2], col=Cols(nci.labs), pch=19, xlab="Z1", ylab="Z2")
+plot(pr.out$x[,c(1,3)], col=Cols(nci.labs), pch=19, xlab="Z1", ylab="Z2")
+```
+
+* 주성분점수벡터들을 그려본다.(그림 10.15)
+* 대체로 단일 암 유형에 대응하는 세포주들은 처음 몇몇 주성분점수벡터들의 값이 유사한 경향이 있다.
+* 이것은 같은 암 유형의 세포주들은 상당히 유사한 유전자 발현수준을 갖는다는 것을 나타낸다.
+* 그림 해석
+* NC160 암세포주들을 처음 세개의 주성분들로 투영한 것.(즉, 처음 세 주성분들에 대한 점수).
+*대체로 단일 암 유형에 속하는 관측치들은 서로 가까이 놓이는 경향이 있다. 이 데이터는 PCA와 같은 차원축소를 사용하지 않고는 사각화할수 없을 것이다. 왜냐하면, 전체 자료에 기초하는 경우 6830 combination 2 개의 산점도가 그려질 수 있고, 그 중 어느 것도 특별히 유용하지는 않을 것이기 때문이다.
+<br></br><br></br>
+
+```{r}
+summary(pr.out)
+```
+* prcomp 객체에 summary()를 사용하면 처음 몇몇 주성분의 PVE(성명되는 분산 비율)에 대한 요약정보를 얻을 수 있다.
+<br></br><br></br>
+
+```{r}
+plot(pr.out)
+```
+
+* 막대그래프에서 각 높이는 pr.out$dev에 대응하는 원소를 제곱하면 얻어진다. 하지만, 각 주성분의 PVE와 누적 PVE를 그리는 것이 더 유용하다.
+<br></br><br></br>
+
+```{r}
+pve = 100 * pr.out$sdev^2 / sum(pr.out$sdev^2)
+par(mfrow=c(1,2))
+plot(pve, type="o", ylab="PVE", xlab="Principal Component", col="blue")
+plot(cumsum(pve), type="o", ylab="Cumulative PVE", xlab="Principal Component", col="brown3")
+```
+
+* 주성분의 PVE, 누적PVE를 그린 것이다. (scree plot)
+* pve의 원소들은 summary(pr.out)$importance[2, ]를 사용하여 얻을 수 있다.
+* cumsum(pve)의 원소들은 summary(pr.out)$importance[3,] 를 사용하여 얻을 수 있다.
+* 결과 그래프는 (그림 10.16)에 주어진다. 하지만, 스크리 그래프를 보면 처음 7개의 각 주성분은 상당한 양의 분산을 설명하지만 그 이후의 주성분에 의해 설명되는 분산은 크게 감소한다. 즉, 대략 7번째 주성분 이후에 그래프가 크게 떨어진다. 이것은 7번째 이후의 주성분을 조사하는 것은 거의 필요가 없을 수 있음을 시사한다.
+<br></br><br></br>
+
+###10.6.2 Clustering the Observations of the NCI60 Data
+
+>* NCI60 데이터의 세포주들을 계층적 클러스터링해보자.
+>* 목적은 관측치들이 암 유형들로 클러스터링 되는지 알아보는 것이다.
+
+```{r}
+sd.data = scale(nci.data)
+```
+* 평균 0, 표준편차 1 이 되게 변수들을 표준화 한다.
+* 앞에서 언급했듯이, 이 단계는 선택적이며 각 유전자가 동일한 스케일이 되기를 원하는 경우에만 수행하면 된다.
+<br></br><br></br>
+
+```{r}
+par(mfrow=c(1,3))
+data.dist = dist(sd.data)
+plot(hclust(data.dist), labels=nci.labs, main="Complete Linkage", xlab="", sub="", ylab="")
+plot(hclust(data.dist, method="average"), labels=nci.labs, main="Average Linkage", xlab="", sub="", ylab="")
+plot(hclust(data.dist, method="single"), labels=nci.labs, main="Single Linkage", xlab="", sub="", ylab="")
+```
+
+* 완전연결, 평균연결, 단일연결을 사용하여 관측치들의 계층적 클러스터링을 수행해본다.(유클리드 거리가 비유사성 측도로 사용된다.)
+* 그림을 보면 연결유형이 결과에 영향을 준다는 것을 볼 수 있다.
+* 단일연결을 사용하면 보통 길게늘어지는(trailing) 클러스터가 만들어지고, 반면에 완전연결과 평균 연결은 좀 더 균형잡힌 클러스터를 생성하는 경향이 있다.
+* 이러한 이유로 완전연결과 평균연결이 단일 연결에 비해 선호된다.
+* 비록 클러스터링이 완벽하지는 않지만, 단일 암 유형 내의 세포주들은 명백히 함께 클러스터링 되는 경향이 있다.
+<br></br><br></br>
+
+```{r}
+hc.out = hclust(dist(sd.data))
+hc.clusters = cutree(hc.out,4)
+table(hc.clusters, nci.labs)
+```
+* 완전연결 계층적 클러스터링을 사용하여 아래의 분석을 진행한다.
+* 특정 개수의 클러스터, 이를테면 4개의 클러스터를 생성하는 높이에서 덴드로그램을 절단할 수 있다.
+* 백혈병(LEUKEMIA) 세포주들은 모두 클러스터 3에 속하지만, 유방암(BREAST) 세포주들은 3개의 다른 클러스터에 퍼져 있다.
+<br></br><br></br>
+
+```{r}
+par(mfrow=c(1,1))
+plot(hc.out, labels=nci.labs)
+abline(h=139, col="red")
+```
+
+* 위의 결과인 클러스터가 생성되는 덴드로그램 절단을 그래프로 나타낸 것이다.
+* abline() 함수는 존재하는 그래프 상에서 직선을 그린다.
+* 인자 h=139는 덴드로그램의 높이 139에서 수평 선을 그린다. 이 높이에서 절단해야 4개의 클러스터가 만들어 진다.
+* 결과 클러스터들이 cutree(hc.out,4)를 사용하여 얻은 것과 동일하다는 것을 확인하는 것은 어렵지 않다.
+<br></br><br></br>
+
+```{r}
+hc.out
+```
+* hclust의 결과를 출력하면 그 객체에 대한 유용한 요약정보를 얻는다.
+<br></br><br></br>
+
+```{r}
+set.seed(2)
+km.out = kmeans(sd.data, 4, nstart=20)
+km.clusters = km.out$cluster
+table(km.clusters, hc.clusters)
+```
+* NCI60의 계층적 클러스터링 결과는 K = 4인 k=Means 클러스터링을 수행할 경우 얻게 될 결과와 어떻게 비교되는가?
+* 결과를 보면, 계층적 클러스터링과 K-Means 클러스터링을 사용하여 얻은 4개의 클러스터는 다소 다르다.
+* K-Means 클러스터링의 클러스터 2는 계층적 클러스터링의 클러스터 3과 동일하다. 하지만, 다른 클러스터들은 같지 않다. 예를 들어, K-Means 클러스터링의 클러스터 4는 계층적 클러스터링에서 클러스터 1에 할당된 관측치의 일부와 클러스터 2에 할당된 관측치 모두를 포함한다.
+<br></br><br></br>
+
+```{r}
+hc.out = hclust(dist(pr.out$x[,1:5]))
+plot(hc.out, labels=nci.labs, main="Hier. Clust. on First Five Score Vectors")
+table(cutree(hc.out,4), nci.labs)
+```
+* 전체 데이터 행렬에 대해 계층적 클러스터링을 수행하는 것이 아니라 처음 몇몇 주성분점수벡터들에 대해서만 계층적 클러스터링을 수행할 수 있다.
+* 이 결과는 전체 자료에 대해 계층적 클러스터링을 수행하여 얻은 결과와는 다르다. 때로는 처음 몇몇 주성분점수벡터들에 대해 클러스터링을 수행하는 것이 전체 데이터를 사용하는 것보다 더 나은 결과를 제공할 수 있다.
+* 이러한 경우, 주성분을 얻는 단계를 노이즈(noise)를 제거하는 것으로 볼 수 있다.
+* 전체 자료가 아니라 처음 몇몇 주성분점수벡터들에 대해 K-Means 클러스터링을 수행할 수도 있다.
+
+
+
+
+

@@ -1,0 +1,212 @@
+---
+title: "ISLR_chapter03_Lab"
+author: "Big"
+date: '2019.04.20'
+output: html_document
+---
+## Lab : 
+
+### Libraries
+```{r}
+library(MASS)
+library(ISLR)
+library(dplyr)
+library(car)
+```
+
+###3.6.2 단순선형회귀(Simple Linear Regression)
+* MASS 라이브러리는 Boston 자료를 포함하고 있으며 교외 506개 지역의 주택 가격(medv)의 중앙값을 기록하고 있다.
+* 방의 개수 : m
+* 평균 주택 연령 : age
+* 사회 경제적 지위기 낮은 백분율 : lstat
+* 등, 13개의 변수를 사용하여 medv를 예측하고자 한다.
+```{r}
+names(Boston)
+```
+```{r}
+attach(Boston)
+lm.fit = lm(medv~lstat)
+lm.fit
+```
+```{r}
+summary(lm.fit)
+```
+* 각 계수에 대한 p-value, 표준오차, 모델에 대한 R-squared, F-statistic 제공됨.
+<br></br>
+<br></br>
+```{r}
+names(lm.fit)
+```
+* names() 함수를 사용하여 lm.fit에 저장된 정보를 확인해볼 수 있음.
+<br></br>
+<br></br>
+```{r}
+confint(lm.fit)
+```
+* 계수 추정치에 대한 신뢰구간을 얻을 수 있다.
+<br></br>
+<br></br>
+```{r}
+predict(
+  lm.fit, 
+  data.frame(lstat=c(5,10,15)),
+  interval="confidence" #신뢰구간
+)
+```
+```{r}
+predict(
+  lm.fit, 
+  data.frame(lstat=c(5,10,15)),
+  interval="prediction" #예측구간
+)
+```
+* predict()는 신뢰구간, 예측구간을 얻는데 사용됨.
+* 신뢰구간보다 예측구간이 더 넓은 것을 알 수 있다.
+<br></br>
+<br></br>
+```{r}
+plot(lstat, medv)
+abline(lm.fit)
+abline(lm.fit, lwd=3) #선 굵기
+abline(lm.fit, lwd=3, col="red") #선 색상
+```
+
+* plot()와 abline()를 사용하여 **최소제곱회귀선**과 함께 medv와 lstat를 그래프로 나타낼 수 있다.
+<br></br>
+<br></br>
+```{r}
+plot(lstat, medv, col="red")
+plot(lstat, medv, pch=20)
+plot(lstat, medv, pch="+")
+plot(1:20, 1:20, pch=1:20)
+```
+
+* 그래프 점들을 변경할 수 있다.
+<br></br>
+<br></br>
+```{r}
+par(mfrow=c(2,2))
+plot(lm.fit)
+```
+
+* plot() 함수를 lm()의 출력에 직접 적용하면 4개의 진단 그래프가 자동으로 생성된다.
+<br></br>
+<br></br>
+```{r}
+plot(predict(lm.fit), residuals(lm.fit))
+```
+
+* residuals() 함수를 사용하여 **선형회귀적합으로부터 잔차**를 계산할 수 있다.
+<br></br>
+<br></br>
+```{r}
+plot(predict(lm.fit), rstudent(lm.fit))
+```
+
+* rstudent()는 **스튜던트화 잔차**를 반환하며 그래프로 그릴 수 있다.
+<br></br>
+<br></br>
+```{r}
+plot(hatvalues(lm.fit))
+```
+
+* hatvalues() 함수를 사용하여 임의의 수의 설명변수들에 대해 **레버러지 통계(leverage statistics)**를 계산할 수 있다.
+<BR></BR>
+<BR></BR>
+```{r}
+which.max(hatvalues(lm.fit))
+
+```
+* which.max() 함수는 벡터 내 가장 큰 원소의 인덱스를 찾는다.
+* 위와 같이 적용하면 어느 관측치가 가장 큰 레버러지 통계량을 가지는지 알 수 있다.
+
+###3.6.3 다중선형회귀(Multiple Linear Regression)
+```{r}
+lm.fit = lm(medv~lstat+age)
+summary(lm.fit)
+```
+```{r}
+lm.fit = lm(medv ~., data=Boston)
+summary(lm.fit)
+vif(lm.fit)
+```
+* 요약 객체는 ?summary.lm 을 입력하여 도움말 정보를 참고하여 사용할 수 있다.
+* summary(lm.fit)$r.squared는 R-squared , summary(lm.fit)$sigma 는 RSE 제공
+* car 패키지의 일부인 vif는 **분산팽창인수**를 계산하는데 사용
+<br></br><br></br>
+```{r}
+lm.fit1 = lm(medv~.-age, data=Boston)
+summary(lm.fit1)
+```
+* -age 를 통해 age를 제외하고 수행할 수 있음.
+<br></br><br></br>
+```{r}
+lm.fit1 = update(lm.fit, ~.-age)
+```
+* 이미 생성된 모델에서 update()를 통해 다시 회귀분석 가능.
+<br></br><br></br>
+###3.6.4 상호작용 항 (Interaction Terms)
+```{r}
+summary(lm(medv~lstat*age, data=Boston))
+```
+* lstat\*age 는 lstat, age, lstat\*age 를 설명변수로 표현한다.
+* lstat+age+lstat:age 를 줄여 나타낸 것이다.
+<br></br><br></br>
+###3.6.5 설명변수의 비선형 변환 (Non-linear Transformations of the Predictors)
+```{r}
+lm.fit2 = lm(medv~lstat+I(lstat^2))
+summary(lm.fit2)
+```
+* I(X^2)을 사용하여 설명변수 X^2을 생성할 수 있다.
+<BR></BR><BR></BR>
+```{r}
+lm.fit=lm(medv~lstat)
+anova(lm.fit, lm.fit2)
+par(mfrow=c(2,2))
+plot(lm.fit)
+plot(lm.fit2)
+```
+* anova() 함수는 이차적합이 선형적합보다 우수한 정도를 수량화하는데 사용된다.
+* anova() 함수는 'Model 1' 과 'Model 2' 두 모델을 비교하는 가설검정을 수행한다.
+* 귀무가설은 두 모델이 동등하게 데이터를 잘 적합한다는 것이고,
+* 대립가설은 모델 2가 더 낫다는 것이다.
+* 결과를 보면 F-statistic 이 135.2 이고 관련 p-value는 0에 가깝다.
+* 이것은 'Model 2' 모델이 훨씬 더 낫다는 것을 나타낸다.
+<BR></BR><BR></BR>
+```{r}
+lm.fit5 = lm(medv~poly(lstat,5))
+summary(lm.fit5)
+```
+* ploy()함수는 다항식을 생성하는 함수이다.
+<BR></BR><BR></BR>
+```{r}
+summary(lm(medv~log(rm), data=Boston))
+```
+* 설명변수에 log를 취할수도 있다.
+<BR></BR><BR></BR>
+###3.6.6 질적 설명변수 (Qualitative Predictors)
+```{r}
+attach(Carseats)
+names(Carseats)
+```
+* ISLR 라이브러리의 일부인 Carseats 자료를 통해 다수의 설명변수를 기반으로 400개 지역에서의 Sales를 예측해보고자 한다.
+<BR></BR><BR></BR>
+```{r}
+lm.fit = lm(Sales~.+Income:Advertising+Price:Age, data=Carseats)
+summary(lm.fit)
+```
+<br></br><br></br>
+```{r}
+contrasts(ShelveLoc)
+```
+* contrasts() 함수는 가변수들에 대한 코딩을 반환한다.
+* 선반 위치가 Good 이면 1, 그렇지 않으면 0 을 가지는 가변수 ShelveLocGood 을 생성하였다.
+* 선반 위치가 Medium 이면 1, 그렇지 않으면 0 을 가지는 가변수 ShelveLocMedium 을 생성하였다.
+* 선반 위치가 bad인 것은 두 가변수가 각각에 대한 값이 0인 것에 해당한다.
+
+
+
+
+
+
+

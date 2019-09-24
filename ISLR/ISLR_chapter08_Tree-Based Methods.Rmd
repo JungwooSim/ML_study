@@ -1,0 +1,291 @@
+---
+title: "ISLR_chapter08_Tree-Based Methods"
+author: "Big"
+date: '2019 4 23 '
+output: html_document
+---
+
+## 8.3 Lab: Decision Trees(의사결정트리)
+
+### 8.3.1 Fitting Classification Trees
+
+>* ISLR 라이브러리에 속해 있는 Carseats 자료를 분석한다.
+>* Sales는 연속변수이므로 이것을 이진변수로 기록하는 것이 필요하다.
+
+```{r}
+library(tree)
+library(ISLR)
+High = ifelse(Carseats$Sales<=8, "No", "Yes")
+Carseats = data.frame(Carseats,High)
+```
+* Sales<=8 을 기준으로 "No", "Yes" 값을 가지는 변수를 생성 후 기존 Carseats 추가해준다.
+<br></br><br></br>
+
+```{r}
+tree.carseats = tree(High~.-Sales, Carseats)
+```
+* tree() 함수를 적합하여 분류트리를 적합하고 Sales를 제외한 모든 변수를 사용하여 High를 예측한다.
+* tree() 함수의 문법은 lm() 함수와 유사하다.
+<br></br><br></br>
+
+```{r}
+summary(tree.carseats)
+```
+* summary() 함수는 트리의 내부 노드로 사용된 변수, 터미널 노드(terminal node)의 수, 오차율을 보여준다.
+* 오차율은 0.09 이다.
+<br></br><br></br>
+
+```{r}
+plot(tree.carseats)
+text(tree.carseats, pretty=0)
+```
+
+* plot() 함수를 사용해여 트리의 구조를 나타닌다.
+* text() 함수로 노드 라벨을 표시하고 인자로 pretty=0 을 사용하면 R은 각 카테고리에 대한 문자를 단순히 표시하는 것이 아니라 질적 설명변수들에 대한 카테고리 이름을 포함한다.
+<br></br><br></br>
+
+```{r}
+tree.carseats
+```
+* 단순히 트리 객체를 입력하면 트리의 각 가지에 해당하는 결과를 출력한다.
+* 터미널 노드로 이어지는 가지에는 "*" 가 표시된다.
+<br></br><br></br>
+
+```{r}
+set.seed(2)
+train = sample(1:nrow(Carseats), 200)
+Carseats.test = Carseats[-train, ]
+High.test = High[-train]
+tree.carseats = tree(High~.-Sales, Carseats, subset = train)
+tree.pred = predict(tree.carseats, Carseats.test, type="class")
+table(tree.pred, High.test)
+(86+57) / 200
+```
+* **분류트리의 성능을 올바르게 평가하기 위해서는 단순히 훈련오차를 계산하는 것이 아니라 검정오차를 추정해야 한다.**
+* 관측치들을 훈련셋과 검정셋으로 분할한 후 훈련셋을 사용하여 트리를 만들고 성능은 검정 데이터로 평가한다.
+* 분류트리에서 type="class"를 사용하면 실제 클래스의 예측값을 반환한다.
+* 약 71.5%가 올바르게 작동하는것을 알 수 있다.
+<br></br><br></br>
+
+```{r}
+set.seed(3)
+cv.carseats = cv.tree(tree.carseats, FUN=prune.misclass)
+names(cv.carseats)
+cv.carseats
+```
+* 트리 pruning을 통해 결과를 개선할 수 있는지 고려해보자.
+* 함수 cv.tree()는 교차검증을 수행하여 최적의 트리 복잡도 수준을 결정한다.
+* 고려할 트리의 시퀀스를 선택하는데는 비용 복잡성(cost complexity) pruning이 사용된다.
+* FUN=prune.misclass 인자를 사용하여 cv.tree() 함수의 default인 이탈도 대신 분류오류율을 기반으로 교차검증과 pruning 과정이 수행되게 한다.
+* cv.tree() 함수는 고려되는 각 트리의 터미널 노드 수(size)와 대응하는 오류율 및 사용된 비용 복잡성 파라미터( (식 8.4)의 알파에 대응하는 k 값)의 값을 제공한다.
+* **dev 는 교차검증 오류율에 해당하며, 9개의 터미널 노드를 가진 트리에서 가장 낮은 교차 검증 오차율이 얻어진다.**
+* 오차율은 size와 k의 함수로 각각 나타낸다.
+<br></br><br></br>
+
+```{r}
+par(mfrow=c(1,2))
+plot(cv.carseats$size, cv.carseats$dev, type="b")
+plot(cv.carseats$k, cv.carseats$dev, type="b")
+```
+<br></br><br></br>
+
+```{r}
+prune.carseats = prune.misclass(tree.carseats, best=9)
+plot(prune.carseats)
+text(prune.carseats, pretty = 0)
+```
+
+*prune.misclass() 함수를 적용하여 트리를 prune하고 9-node tree를 얻는다.
+<br></br><br></br>
+
+```{r}
+tree.pred = predict(prune.carseats, Carseats.test, type="class")
+table(tree.pred, High.test)
+(94+60) / 200
+```
+* pruning된 트리가 검정 데이터셋에 대해 얼마나 잘 동작하는지를 알아보기위해 predict()함수를 적용한다.
+* 이 결과에 의하면 검정 관측치의 77%가 올바르게 분류되므로, pruning 과정은 해석력과 분류 정확도가 향상된 트리를 제공한다.
+<br></br><br></br>
+
+### 8.3.2 Fitting Regression Trees
+
+>* MASS 라이브러리의 Boston 자료에 적합한다.
+
+```{r}
+library(MASS)
+set.seed(1)
+train = sample(1:nrow(Boston), nrow(Boston)/2)
+tree.boston = tree(medv~., Boston, subset=train)
+summary(tree.boston)
+```
+* 훈련셋을 생성하고, 이 훈련 데이터에 트리를 적합한다.
+* 3개의 변수가 트리를 구성하는데 사용되었다.
+* 회귀트리에서 이탈도는 단순히 그 트리에 대한 오차제곱합이다.
+<br></br><br></br>
+
+```{r}
+plot(tree.boston)
+text(tree.boston, pretty=0)
+```
+
+* 변수 lstat는 사회 경제적 지위(socioeconomic status)가 낮은 사람들의 백분율을 측정한다.
+* 트리는 lstat 값이 낮을수록 주택가격이 높게 대응된다는 것을 나타낸다.
+* 거주자들이 사회적 경제적 지위가 높은(rm >= 7.437, lstat<9.715) 교외지역에서는 더 큰 주택에 대한 메디안 주택가격이 약 $46,400 이라고 예측한다.
+<br></br><br></br>
+
+```{r}
+cv.boston = cv.tree(tree.boston)
+plot(cv.boston$size, cv.boston$dev, type="b")
+```
+
+* cv.tree() 함수를 사용하여 트리 pruning 이 성능을 개선할 것인지 알아본다.
+* 가장 복잡한 트리가 교차검증에 의해 선택된다.
+* 트리 pruning을 원한다면 아래처럼 하면된다.
+<br></br><br></br>
+
+```{r}
+prune.boston = prune.tree(tree.boston, best = 5)
+plot(prune.boston)
+text(prune.boston, pretty = 0)
+```
+
+* 트리 pruning을 원한다면 prune.tree() 함수를 사용하여 다음과 같이 할 수 있다.
+<br></br><br></br>
+
+```{r}
+yhat = predict(tree.boston, newdata = Boston[-train,])
+boston.test = Boston[-train, "medv"]
+plot(yhat, boston.test)
+abline(0,1)
+mean((yhat-boston.test)^2)
+```
+
+* 검정셋 MSE는 25.04559 이고 제곱근은 약 5.005 이다.
+* 이것은 검정셋에 대한 모델의 예측값이 교외지역 실제 메디안 주택가격의 $5,005 이내에 있다는 것을 나타낸다.
+<br></br><br></br>
+
+### 8.3.3 Bagging and Random Forests
+
+>* randomForest 패키지를 사용해서 Boston 자료에 배깅과 랜덤포레스트를 적용한다.
+>* 배깅은 m=p 인 랜덤 포리스트의 특수한 경우이다. 그러므로 randomForest() 함수는 렌덤포레스트 뿐만 아니라 배깅을 수행하는데도 사용될 수 있다.
+
+```{r}
+library(randomForest)
+set.seed(1)
+bag.boston = randomForest(medv~., data=Boston, subset=train, mtry=13, importance=TRUE)
+bag.boston
+```
+* mtry=13은 트리의 각 분할에 13개 설명변수가 모두가 고려되어야 한다는 것을 나타낸다. 즉, 배깅이 수행되어야 한다.
+<br></br><br></br>
+
+```{r}
+yhat.bag = predict(bag.boston, newdata = Boston[-train, ])
+plot(yhat.bag, boston.test)
+abline(0,1)
+mean((yhat.bag-boston.test)^2)
+```
+
+* 배깅 모델의 검정셋에 대한 성능은 어떤가?
+* 검정셋 MSE는 13.50808으로, 최적으로 pruning된 단일 트리를 사용하여 얻은 값의 거의 절반이다.
+<br></br><br></br>
+
+```{r}
+bag.boston = randomForest(medv~.,data=Boston, subset=train, mtry = 13, ntree=25)
+yhat.bag = predict(bag.boston, newdata = Boston[-train,])
+mean((yhat.bag-boston.test)^2)
+```
+* randomForest()에 의해 만들어지는 트리의 수는 ntree 인자를 사용하여 변경할 수 있다.
+<br></br><br></br>
+
+```{r}
+set.seed(1)
+rf.boston = randomForest(medv~., data=Boston, subset=train, mtry=6, importance=TRUE)
+yhat.rf = predict(rf.boston, newdata = Boston[-train,])
+mean((yhat.rf-boston.test)^2)
+```
+* 렌덤포레스트도 배깅과 동일한 방식으로 만들어지며, 다만 사용되는 mtry 인자의 값이 작을 뿐이다.
+* 기본적으로, randomForest()는 회귀트리의 렌덤포레스트를 만들 때는 p/3개의 변수를 사용하고, 분류트리의 랜덤포레스트를 만들 때는 루트p 개의 변수를 사용한다.
+* 여기서는 mtry = 6이 사용된다.
+* 검정셋의 MSE는 11.31로 배깅보다 더 좋은 결과가 나온다.
+<br></br><br></br>
+
+```{r}
+importance(rf.boston)
+```
+* importance() 함수를 사용하여 각 변수의 중요도를 볼 수 있다.
+* 변수의 중요도에 대한 두 가지 측도가 제공된다.
+1. 첫 번재 측도는 주어진 변수가 모델에서 제외될 때 배깅되지 않은 표본에 대한 예측 정확도의 평균 감소량을 기반으로 한다.
+2. 두 번째 측도는 주어진 변수에 대한 분할로 인한 노드 impurity의 총 감소량을 기반으로 한다. (그림 8.9)
+* 회귀트리의 경우 노드 impurity는 훈련 RSS에 의해 측정되고, 분류트리의 경우에는 이탈도에 의해 측정된다.
+<br></br><br></br>
+
+```{r}
+varImpPlot(rf.boston)
+```
+
+* varImpPlot() 함수를 사용하여 그래프로 나타낼 수 있다.
+* 지역사회의 재산 수준(lstat)와 주택 크기(rm)이 중요한 변수라는 것을 알 수 있다.
+<br></br><br></br>
+
+### 8.3.4 Boosting
+
+>* gbm 패키지의 gbm() 함수를 사용해서 부스틍 회귀트리를 Boston 자료에 적합한다.
+
+```{r}
+library(gbm)
+set.seed(1)
+boost.bostion = gbm(medv~., data=Boston[train,], distribution="gaussian", n.trees=5000,interaction.depth=4)
+```
+* 회귀문제이므로 distribution="gaussian" 옵션을 가지고 gbm()을 실행한다.
+* 만약 이진분류 문제라면 distribution="bernoulli" 를 사용할 것이다.
+* 인자 n.trees = 5000은 5000개의 트리를 원한다는 것을 나타내며, interaction.depth=4 옵션은 각 트리의 깊이를 제한한다.
+<br></br><br></br>
+
+```{r}
+summary(boost.bostion)
+```
+
+* summary() 함수는 상대적 영향력 그래프를 생성하고 상대적 영향력 통계량을 출력한다.
+* 출력을 보면 lstat와 rm이 가장 중요한 변수라는 것을 알 수 있다.
+<br></br><br></br>
+
+```{r}
+par(mfrow=c(1,2))
+plot(boost.bostion, i="rm")
+plot(boost.bostion, i="lstat")
+```
+
+* summary(boost.bostion)에서 확인한 중요한 변수 lstat, rm에 대한 부분 종속성 그래프(partial dependence plot)를 생성할 수도 있다.
+* 위 그래프들은 다른 변수들을 통합한 후 반응변수에 대한 선택된 변수들의 미미한 효과를 보여준다.
+* 예상했다싶이 메디안 주택가격은 rm에 따라 증가하고 lstat에 따라 감소한다.
+<br></br><br></br>
+
+```{r}
+yhat.boost = predict(boost.bostion, newdata=Boston[-train,], n.trees=5000)
+mean((yhat.boost-boston.test)^2)
+```
+* 부스팅 모델을 사용하여 검정셋에 대해 medv를 예측한다.
+* 검정 MSE는 10.81479로 랜덤 포레스트의 검정 MSE와 유사하고 배깅보다는 우수하다.
+<br></br><br></br>
+
+```{r}
+boost.bostion = gbm(medv~., data=Boston[train,], distribution="gaussian", n.trees=5000,interaction.depth=4, shrinkage=0.2, verbose=F)
+yhat.boost = predict(boost.bostion, newdata=Boston[-train,], n.trees=5000)
+mean((yhat.boost-boston.test)^2)
+```
+* 원한다면 (식 8.10)의 수축(shrinkage) 파라미터 람다 값을 다르게하여 부스팅을 수행할 수 있다.
+* 기본값은 0.0001이지만, 쉽게 바꿀 수 있다.
+* 위에선 수축파라미터 람다 값을 0.2로 적용하였다.
+* 람다 값이 0.2의 경우 람다 0.001 일때 보다 검정 MSE가 약간 낮다
+
+
+
+
+
+
+
+
+
+
+
+

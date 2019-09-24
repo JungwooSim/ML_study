@@ -1,0 +1,347 @@
+---
+title: "ISLR_chapter04_Classification"
+author: "Big"
+date: '2019.04.20'
+output: html_document
+---
+## Lab : Logistic Regression, LDA, QDA, KNN
+
+###4.6.1 주식시장 자료 (The Stock Market Data)
+* ISLR 라이브러리에 포함된 Smarket 자료의 요약정보를 살펴 볼 것이다.
+* 자료는 2001년 ~ 2005년 1,250일에 걸친 S&P 500 주가지수 수익률(백분율)로 구성되며
+* 각 날짜에 그날이전 5일의 각 거래일에 Lag1에서 Lag5에 대한 수익률이 기록되어 있다.
+* Volume : 전날에 거래된 주식 수를 10억단위로 표시
+* Today : 당일의 수익률
+* Direction : 당일 주가지수 상승 또는 하락 여부
+```{r}
+library(ISLR)
+names(Smarket)
+dim(Smarket)
+summary(Smarket)
+pairs(Smarket) #산점도 행렬
+```
+<br></br><br></br>
+```{r}
+cor(Smarket[,-9])
+```
+* cor() 함수는 모든 설명변수의 쌍들의 상관계수를 포함하는 행렬을 제공한다.
+* 질적 변수는 제외하고 돌려야 한다.
+* Year과 Volume가 조금은 상관성이 있어보인다.
+<br></br><br></br>
+```{r}
+plot(Smarket$Year,Smarket$Volume)
+```
+
+* 위에서 Year과 Volume가 상관성이 있어, 그래프로 그려보니 year가 증가할수록 Volume도 증가하는것을 알 수 있음(미세함..)
+<br></br><br></br>
+
+###4.6.2 로지스틱 회귀 (Logistic Regression)
+* 로지스틱 회귀모델을 적합하여 Lag1 ~ Lag5와 Volume을 이용하여 Direction을 예측할 것이다.
+* glm() 함수는 로지스틱 회귀를 포함하는 일반화선형모델(generalized linear model)을 적합한다.
+```{r}
+glm.fit = glm(
+  Direction~Lag1+Lag2+Lag3+Lag4+Lag5+Volume,
+  data=Smarket,
+  family=binomial #로지스틱 회귀를 실행하는 인자.
+  )
+summary(glm.fit)
+```
+* 여기서 p-value가 가장 작은 것은 Lag1 이다.
+* Lag1에 대한 계수가 음수인 것이 시사하는 것은 어제의 수익률이 양수이면 오늘 주가지수가 상승할 가능성이 낮다는 것이다.
+* 하지만, 0.145의 p-value는 비교적 큰 값이므로 Lag1과 Direction이 실질적인 상관성이 있다는 명백한 증거는 없다.
+<br></br><br></br>
+```{r}
+coef(glm.fit)
+summary(glm.fit)$coef
+```
+<br></br><br></br>
+```{r}
+glm.probs = predict(glm.fit, type="response")
+glm.probs[1:10]
+contrasts(Smarket$Direction)
+```
+* coef() 함수를 사용하여 적합된 모델에 대한 계수들을 액세스한다.
+* summary() 함수를 사용하여 계수들의 p-value과 같은 적합된 모델의 특정 정보를 액세스할 수 있다.
+<br></br><br></br>
+* predict() 함수는 주어진 설명변수 값에 대해 주가지수가 상승할 확률을 예측하는데 사용될 수 있다.
+* type="response" 옵션을 사용하면 logit과 같은 정보가 아니라 P(Y = 1|X) 형태의 확률을 출력 한다.
+* 만약, predict() 함수에 어떠한 자료도 주어지지 않으면 로지스틱 회귀모델을 적합하는데 사용되었던 훈련자료에 대한 확률이 계산된다.
+* 여기서는 첫 10개의 확률만 출력하였다.
+* 이 값들은 주가지수가 하락하는 것이 아니라 상승할 확률이다. 왜냐하면, contrasts() 함수로 확인해 보면 R이 생성한 가변수는 Up일 때 1이기 때문이다.
+<BR></BR><BR></BR>
+```{r}
+glm.pred = rep("Down",1250) #glm.pred 에 default로 'Down'을 1250개 벡터를 추가함.
+glm.pred[glm.probs > .5] = "Up" #glm.probs > .5 인덱스를 추출 및 glm.pred에 'Up' 업데이트 함
+```
+* 특정한 날의 주가지수가 상승할지 혹은 하락할지 예측하기 위해서는 예측된 확률들을 클래스 라벨 Up 또는 Down으로 변환해야 한다.
+<BR></BR><BR></BR>
+```{r}
+table(glm.pred, Smarket$Direction, Smarket$Direction)
+(507+145) / 1250
+mean(glm.pred == Smarket$Direction)
+mean(glm.pred == Smarket$Direction) * 100
+```
+* 혼동행렬(confusion martix)에서 대각원소들은 올바른 예측을 나타내고 비대각원소들은 잘못된 예측을 나타낸다.
+* 따라서 모델은 주가지수가 상승할 507일과 하락할 145일을 올바르게 예측하여 507+145 = 652일을 정확하게 예측하였다.
+* mean()함수는 예측이 맞았던 날의 비율을 계산하는데 사용할 수 있다.
+* 로지스틱 회귀모델은 주가지수의 움직임 방향을 52.16% 올바르게 예측하였다.
+* 하지만 보통은 훈련오차율은 검정오차율을 과소평가하는 경향이 있다.
+* 그래서 로지스틱 회귀모델의 정확도를 좀 더 잘 평가하기위해서는 데이터의 일부를 이용하여 모델에 적합하고, 나머지 데이터를 이용하여 정확도를 예측하면 좀 더 개선된 정확도를 얻을 수 있다.
+<BR></BR><BR></BR>
+```{r}
+train <- (Smarket$Year<2005)
+Smarket.2005 <- Smarket[!train,]
+dim(Smarket.2005)
+Direction.2005=Smarket$Direction[!train]
+```
+* 먼저 2001년에서 2004년까지의 관측치들에 대응하는 벡터를 생성해보자.
+* 나머지 벡터를 사용하여 2005년 관측치들로 구성된 데이터셋을 생성한다.
+<BR></BR><BR></BR>
+```{r}
+glm.fit <- glm(Direction~Lag1+Lag2+Lag3+Lag4+Lag5+Volume, data=Smarket, family=binomial, subset=train) #subset=train 옵션은 data=Smarket에서 train 인덱스만 추출하는 것
+glm.probs <- predict(glm.fit, Smarket.2005, type="response")
+```
+* 2005년 이전의 데이터로만 사용하여 로지스틱 회귀모델을 적합한다.
+* 생성된 모델을 가지고 2005년의 자료를 예측한다.
+<BR></BR><BR></BR>
+```{r}
+glm.pred = rep("Down",252)
+glm.pred[glm.probs > .5] = "Up"
+table(glm.pred, Direction.2005, Direction.2005)
+mean(glm.pred == Direction.2005) #잘 예측한 확률
+mean(glm.pred != Direction.2005) #검정오차율
+```
+* 훈련오차율과 검정오차율이 다른 것을 알 수 있다.
+<BR></BR><BR></BR>
+```{r}
+glm.fit = glm(Direction~Lag1+Lag2, data=Smarket, family=binomial, subset=train)
+glm.probs = predict(glm.fit, Smarket.2005, type="response")
+glm.pred = rep("Down",252)
+glm.pred[glm.probs > 0.5] = "Up"
+table(glm.pred, Direction.2005, Direction.2005)
+mean(glm.pred==Direction.2005) #적중률(accuracy rate)
+mean(glm.pred!=Direction.2005) #검정오차율
+```
+* 로지스틱 회귀모델은 모든 설명변수에대해 좋지 않은 p-value를 가지고있다.(위에서 확인가능)
+* Direction을 예측하는데 도움이 되지 않는 변수가 있어 변수를 제외함으로써 더 효율적인 모델을 얻을 수 있다.
+* 반응변수와 상관관계가 없는 설명변수들을 사용하는 것은 검정오차율을 악화시키는 경향이 있다.(이러한 설명변수들은 대응하는 편향 감소 없이 분산을 증가시키는 경향이 있음.)
+* Lag1, Lag2 만을 사용하여 로지스틱 회귀를 적합한 결과 더 나아진 검정오차율을 볼 수 있다.
+* **이 결과에 따르면 주가지수 상승을 예측한 날에는 주식을 사고 주가지수 하락이 예측된 날에는 거래를 피하는 전략이 유효해보인다.**
+<BR></BR><BR></BR>
+```{r}
+predict(glm.fit, newdata=data.frame(Lag1=c(1.2,1.5),Lag2=c(1.1,-0.8)), type="response")
+```
+* Lag1, Lag2가 특정값일때 수익률을 예측하기위한 방법이다.
+
+###4.6.3 선형판별분석 (LDA, Linear Discriminant Analysis)
+```{r}
+library(MASS)
+lda.fit = lda(Direction~Lag1+Lag2, data=Smarket, subset=train)
+```
+* LDA 모델을 적합할때는 MASS 라이브러리의 lda() 함수를 사용한다.
+* 사용방법은 lm()과 동일하다. family 옵션이 없는것을 제외하면 glm()과도 동일하다.
+<br></br><br></br>
+```{r}
+lda.fit
+```
+* Prior probabilities of groups을 해석하게되면, 훈련 관측치들의 49.2%는 주가지수가 하락했던 날에 해당한다.
+* Group means 은 각 클래스 내 각 설명변수의 평균이며, LDA는 이것을 uk 추정치로 사용한다.
+* Group means 은 주가지수가 상승한날 이전 이틀의 수익률은 음수이고 주가지수가 하락한날 이전 이틀의 수익률은 양수인 경향이 있다는 것을 시사한다.
+* LDA계수들은 (식 4.19)의 X = x 에 곱해지는 승수(multplier)들이다.
+* 만약 -0.642 x Lag1 - 0.513 x Lag2 가 크면 LDA 분류기는 주가지수 상승을 예측할 것이고,
+* 그렇지 않다면 LDA 분류기는 주가지수 하락을 예측할 것이다.
+<br></br><br></br>
+```{r}
+plot(lda.fit)
+```
+* plot() 함수는 -0.642 x Lag1 - 0.513 x Lag2 를 계산하여 얻은 LDA 그래프를 제공한다.
+<br></br><br></br>
+```{r}
+lda.pred = predict(lda.fit, Smarket.2005)
+names(lda.pred)
+```
+* predict() 함수는 3개의 원소를 가진 리스트를 반환한다.
+* class는 주가지수의 움직임에 대한 LDA의 예측을 포함한다.
+* posterior는 사후확률을 포함하는 행렬로, k번째 열은 대응하는 관측치가 k번째 클래스에 속하는 사후확률이며 이 확률은 (식 4.10)으로부터 계산된다.
+* x는 앞에서 기술한 선형판별을 포함한다.
+<br></br><br></br>
+```{r}
+lda.class = lda.pred$class
+table(lda.class, Direction.2005)
+mean(lda.class == Direction.2005) #적중률(accuracy rate)
+```
+* 4.5절에서 보았듯이 LDA와 로지스틱 회귀 예측은 거의 동일하다.
+<br></br><br></br>
+```{r}
+sum(lda.pred$posterior[,1] >= 0.5)
+sum(lda.pred$posterior[,1] < 0.5)
+```
+* 사후확률에 50% 임계치를 적용하여 lda.pred$class에 포함된 예측을 다시 해보자.
+<br></br><br></br>
+```{r}
+lda.pred$posterior[1:20,1]
+lda.class[1:20]
+```
+* 모델에 의해 출련된 사후확률은 주가지수가 하락할 확률에 대응한다는 것을 유념하자.
+<br></br><br></br>
+```{r}
+sum(lda.pred$posterior[,1] > 0.9)
+```
+* 원한다면 예측하는데 사후확률을 50%가 아닌 다른 사후확률 값을 쉽게 사용할 수 있다.
+* 예를 들어, 사후확률이 적어도 90%인 경우에만 주가지수 하락을 예측한다고 해보자.
+* 2005년에는 사후확률 90%에 만족하는 날이 없다.
+* 주가지수 하락에 대한 사후확률이 가장 큰날은 52.02% 였다.
+<br></br><br></br>
+
+###4.6.4 이차판별분석 (QDA, Quadratic Discriminant Analysis)
+```{r}
+qda.fit = qda(Direction~Lag1+Lag2, data=Smarket, subset=train)
+qda.fit
+```
+* QDA 적합은 MASS 라이브러리의 qda() 함수를 사용한다.
+* ida() 함수와 문법은 동일하다.
+* 적합에 대한 출력 결과는 그룹 평균들은 포함하지만 선형판별계수는 포함하지 않는다.
+* 왜냐하면, QDA 분류기는 설명변수들의 1차(선형)함수가 아니라 2차함수에 관련되기 때문이다.
+<br></br><br></br>
+
+```{r}
+qda.class = predict(qda.fit, Smarket.2005)$class
+table(qda.class, Direction.2005, Direction.2005)
+mean(qda.class == Direction.2005)
+```
+* QDA 모델을 적합하는데 2005년 데이터를 사용하지 않았음에도 불구하고 거의 60%가 정확하다.
+* 정확한 모델링이 매운 어려운 것으로 알려진 주식시장 데이터에 대해 이 정도 수준의 정확도는 상당히 인상적이다.
+<br></br><br></br>
+
+###4.6.5 K-Nearest Neighbors (K-최근접이웃)
+```{r}
+library(class)
+train.X = cbind(Smarket$Lag1,Smarket$Lag2)[train,]
+test.X = cbind(Smarket$Lag1,Smarket$Lag2)[!train,]
+train.Direction = Smarket$Direction[train]
+```
+* class 라이브러리의 knn() 함수를 사용하여 KNN을 수행할 수 있다.
+* knn() 함수는 모델을 적합하고 그 다음에 모델을 사용하여 예측하는 2단계 접근법이 아니라 단일 명령어를 사용하여 예측한다.
+* knn()은 4개의 입력이 필요하다.
+1. 훈련 데이터와 연관된 설명변수들을 포함하는 행렬. train.X로 표시
+2. 예측하고자 하는 데이터와 연관된 설명변수들을 포함하는 행렬. test.X로 표시
+3. 훈련 관측치들에 대한 클래스 라벨을 포함하는 벡터. train.Direction 으로 표시
+4. 분류기가 사용할 최근접 이웃의 수를 나타내는 K 값
+<br></br><br></br>
+
+```{r}
+set.seed(1)
+knn.pred = knn(train.X, test.X, train.Direction, k=1)
+table(knn.pred, Direction.2005, Direction.2005)
+(83+43) / 252
+```
+* knn()을 적용하기전에 random seed를 설정한다. 만약 여러 개의 관측치들이 동일하게 가까운 이웃으로 판단되면 R은 임의로 하나를 선택할 것이다. 그러므로 동일한 결과를 재생산하려면 random seed를 설정해야 한다.
+* K=1 일때는 50% 정확도로 좋은 정확도를 보여주고 있지는 않다. 이유는 데이터에 지나치게 유연하게 적합하기 때문일수 있다.
+<br></br><br></br>
+
+```{r}
+knn.pred = knn(train.X, test.X, train.Direction, k=3)
+table(knn.pred, Direction.2005, Direction.2005)
+(87+48) / 252
+knn.pred = knn(train.X, test.X, train.Direction, k=5)
+table(knn.pred, Direction.2005, Direction.2005)
+(82+40) / 252
+```
+* K=3을 이용하여 분석을 반복한다.
+* 결과가 좀 더 나아진것을 알 수 있다.
+* K=5을 이용하여 분석을 반복한다.
+* 결과가 k=3 보다 좋지 않다.
+<br></br><br></br>
+
+###4.6.6 Caravan 보험 자료에 적용 (An Application to Caravan Insurance Data)
+```{r}
+dim(Caravan)
+summary(Caravan$Purchase)
+348/(5474+348)
+```
+* KNN 기법을 ISLR 라이브러리에 포함되어 있는 Caravan 자료에 적용한다.
+* 이 자료는 5,822명에 대한 인구통계적 특징을 측정하는 85개의 설명변수를 포함한다.
+* 반응변수는 Purchase로, 개인이 이동식 주택 보험을 구매하는지의 여부를 나타낸다.
+* 이자료에서는 6% 만이 보험을 구매 하였다.
+<br></br><br></br>
+
+```{r}
+standardized.X = scale(Caravan[,-86]) #질적 변수는 제외하고 표준화 처리 함
+var(Caravan[,1])
+var(Caravan[,2])
+var(standardized.X[,1])
+var(standardized.X[,2])
+```
+
+* KNN 분류기는 주어진 검정 관측치에 가장 가까운 관측치들을 식별하여 검정 관측치의 클래스를 예측하므로 **변수들의 크기, 즉 스케일(scale)이 문제가 된다.**
+* 스케일이 큰 변수들은 관측치들 간의 거리에 미치는 영향이 스케일이 작은 변수보다 더 크므로 KNN 분류기에 미치는 영향이 더 크다.
+* 위 문제를 해결하기 위해 데이터를 표준화하여 모든 변수들이 평균이 0 이고 표준편차가 1이 되게 하는 것이다. 그러면 모든 변수들이 비교가능한 스케일이 될 것이다.
+* scale()함수가 이러한 역할을 한다.
+<br></br><br></br>
+
+```{r}
+test = 1:1000
+train.X = standardized.X[-test,]
+test.X = standardized.X[test,]
+train.Y = Caravan$Purchase[-test]
+test.Y = Caravan$Purchase[test]
+set.seed(1)
+knn.pred = knn(train.X, test.X, train.Y, test.Y, k=1)
+knn.pred[is.na(knn.pred)] = "No" # NA -> No 변경
+mean(test.Y != knn.pred) #오류율
+mean(test.Y != "No")
+```
+* 관측치들을 분할하여 첫 1,000개는 검정셋에 나머지는 훈련셋에 포함한다.
+* K=1을 이용하여 훈련 데이터에 대해 KNN 모델을 적합하고, 성능은 검정 데이터를 사용하여 평가한다.
+* 1,000개의 검정 관측치에 대한 KNN 오류율은 12%가 조금 안된다.
+* 언뜻 보기에 12%는 좋은 결과인 것 같다. 하지만 고객 중 6%만 보험을 구매하였으므로 설명변수 값에 상관없이 항상 No라고 예측하면 오류율은 6%로 내려갈 것이다.
+<br></br><br></br>
+
+>* 보험을 개인에게 판매하는데는 적지 않은 비용이 든다고 생각해보자.
+>* 예들 들어, 판매원은 아마도 각 잠재 고객을 방문해야 한다. 만약 임의로 선택된 고객에게 보험을 판매하려고 한다면 성공율은 6% 밖에 되지 않을 것이며 관련 비용을 감안하면 너무 낮다고 생각할 수 있다.
+>* 보험회사는 구매를 할 것 같은 고객에게만 보험 판매를 시도하고 싶을 것이며, 따라서 **전체 오류율에는 관심이 없다. ** 대신에, 보험을 구입해야한다고 올바르게 예측되는 고객 비율에 관심이 있다.
+
+```{r}
+table(knn.pred, test.Y, test.Y)
+9 / (62+9)
+```
+* K = 1 인 KNN은 보험을 구입한다고 예측된 고객들 중에서는 임의 추측보다 훨씬 낫다.
+* 보험 구입이 예측된 71명의 고객 중에서 9명, 즉 12.6%가 실제로 보험을 구입하였다.
+* 이 비율은 임의 추측으로 얻을 수 있는 것보다 2배나 높다.
+<br></br><br></br>
+
+```{r}
+knn.pred = knn(train.X, test.X, train.Y, test.Y, k=3)
+table(knn.pred, test.Y,test.Y)
+5/26
+knn.pred = knn(train.X, test.X, train.Y, test.Y, k=5)
+table(knn.pred, test.Y,test.Y)
+4/15
+```
+* K = 3 이면 성공률은 19%로 올라가고 K = 5 이면 26.7%가 된다.
+* 이것은 임의 추측보다 4배 이상 높은 비율이다.
+* KNN은 해석이 쉽지 않은 자료에서 어떤 실질적인 패턴을 찾는 것 같다.
+<br></br><br></br>
+
+```{r}
+glm.fit = glm(Purchase~., data=Caravan, family=binomial, subset=-test)
+glm.probs = predict(glm.fit, Caravan[test,], type="response")
+glm.pred = rep("No", 1000)
+glm.pred[glm.probs > 0.5] = "Yes"
+table(glm.pred, test.Y, test.Y)
+
+glm.pred = rep("No", 1000)
+glm.pred[glm.probs > 0.25] = "Yes"
+table(glm.pred, test.Y, test.Y)
+11/(22+11)
+```
+* 비교를 위해 로지스틱 회귀모델을 이 데이터에 적합해볼 수 있다.
+* 분류기에 대한 예측확률 컷오프(cut-off)로 0.5를 사용한다면 문제가 발생한다.
+* 즉, 관측치 중 7명만 보험을 구매한다고 예측한다.
+* 더 큰 문제는 이것들이 하나도 맞지 않다는 것이다.
+* 하지만 0.5를 cut-off로 사용해야하는 것은 아니다.
+* 예측확률이 0.25를 초과할 때 구매를 예측한다면 훨씬 더 나은 결과를 얻을 것이다.
+* 즉, 33명이 보험을 구매한다고 예측하게 될 것이고, 이 중 약 33%는 옳다.
+* 이것은 임의 추측보다 5배 이상 낫다.
+
+

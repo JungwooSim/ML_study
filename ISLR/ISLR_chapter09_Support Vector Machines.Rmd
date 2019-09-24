@@ -1,0 +1,369 @@
+---
+title: "ISLR_chapter09_Support Vector Machines"
+author: "Big"
+date: '2019.04.23'
+output: html_document
+---
+## Lab : Support Vector Machines
+
+>* R의 e1071 라이브러리를 사용하여 서포트 벡터 분류기와 SVM을 살펴본다.
+>* LiBlineaR 라이브러리를 사용할 수도 있는데 아주 큰 선형문제에 유용하다.
+
+###9.6.1 Support Vector Classifier
+
+>* e1071 라이브러리에는 다수의 통계학습방법이 구현되어 있다. 특히, svm() 함수는 인자 kernel="linear"가 사용될 경우 서포트 벡터 분류기를 적합하는데 사용될 수 있다.
+>* 이 함수는 서포트 벡터 분류기에 대한 (식 9.14), (식 9.25)와 약간 다른 식을 사용한다.
+>* cost 인자는 마진 위반에 대한 비용을 지정한다. 
+>* cost 인자가 작으면, 마진은 넓을 것이고 많은 서포트 벡터들이 마진 상에 있거나 마진을 위반할 것이다.
+>* cost 인자가 클 경우, 마진이 좁을 것이고 마진 상에 있거나 마진을 위반하는 서포트 벡터들은 소수일 것이다.
+
+```{r}
+set.seed(1)
+x = matrix(rnorm(20*2), ncol=2)
+y = c(rep(-1,10), rep(1,10))
+x[y==1,] = x[y==1, ] + 1
+plot(x, col=3-y)
+```
+
+* 두 클래스에 속하는 관측치를 생성한다.
+<br></br><br></br>
+
+```{r}
+library(e1071)
+dat = data.frame(x=x, y=as.factor(y))
+svmfit = svm(y~., data = dat, kernel="linear", cost=10, scale=FALSE)
+```
+* svm() 함수가 분류를 수행하기 위해서는 반응변수를 요인(factor) 변수로 코딩해야 한다.
+* scale=FALSE 인자를 사용하게되면 변수 스케일링(평균 0, 표준편차 1 이 되도록)을 하지 않는다.
+* 응용에 따라서는 scale=TRUE 로 사용하는 것을 선호할 수도 있다.
+<br></br><br></br>
+
+```{r}
+plot(svmfit, dat)
+```
+
+* plot() 함수의 두 인자는 svm()에 대한 호출 결과와 svm() 호출에 사용된 데이터 이다.
+* -1 class에 할당될 변수공간의 영역은 밝은 청색, +1 class에 할당될 영역은 보라색으로 나타낸다.
+* 그래프의 결정경계는 들쭉날쭉해 보이지만 두 클래스 사이의 결정경계는 선형이다.(kernel="linear"을 사용했으므로)
+* 이 예에서는 한 개의 관측치만 잘못 분류된다는 것을 볼 수 있다.
+* 서포트 벡터들은 x 로 표시되고 나머지 관측치들은 o 으로 표시된다.
+<br></br><br></br>
+
+```{r}
+svmfit$index
+```
+* 위의 명령어로 서포트 백터를 식별할 수 있다.(원소 위치)
+<br></br><br></br>
+
+```{r}
+summary(svmfit)
+```
+* summary() 함수를 사용하여 서포트 벡터 분류기에 대한 일부 기본적인 정보를 얻을 수 있다.
+* 선형 커널이 cost=10을 가지고 사용되었으며
+* 7개의 서포트 백터가 있고 클래스별 각 4개 3개가 있음을 알 수 있다.
+<br></br><br></br>
+
+```{r}
+svmfit = svm(y~., data = dat, kernel="linear", cost=0.1, sacle=FALSE)
+plot(svmfit, dat)
+svmfit$index
+```
+
+* cost 파라미터 값이 작아지면 마진이 넓어지기 때문에 더 많은 수의 서포트 벡터를 얻는다.
+* svm() 함수는 서포트 벡터 분류기가 적합될 때 얻어진 선형 결정경계의 계수들과 마진의 폭(넓이)를 제공하지 않는다.
+<br></br><br></br>
+
+```{r}
+set.seed(1)
+tune.out = tune(svm, y~., data = dat, kernel="linear", ranges=list(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+```
+* e1071 라이브러리는 교차검증을 수행하기 위해 내장 함수 tune()을 포함한다.
+* tune()는 관심있는 model set에 대해 10-fold 교차검증을 수행한다.
+* 이 함수를 사용하기 위해서는 고려 중인 model set에 대한 관련 정보를 전달한다.
+* 어떤 범위의 cost 파라미터 값을 사용하여 SVMs을 선형 커널과 비교하고자 한다.
+<br></br><br></br>
+
+```{r}
+summary(tune.out)
+```
+* summary() 명령을 사용하면 각 모델에 대한 교차검증 오차를 쉽게 볼 수 있다.
+* cost=0.1인 경우에 교차검증 오차율이 가장 낮다는 것을 알 수 있다.
+* tune() 함수는 얻어진 최고 모델을 저장한다.
+<br></br><br></br>
+
+```{r}
+bestmod = tune.out$best.model
+summary(bestmod)
+```
+* tune() 함수에서 얻은 최고 모델을 엑세스 할 수 있다.
+<br></br><br></br>
+
+```{r}
+xtest = matrix(rnorm(20*2), ncol=2)
+ytest = sample(c(-1,1), 20, rep=TRUE)
+xtest[ytest==1,] = xtest[ytest==1,]+1
+testdat = data.frame(x = xtest, y=as.factor(ytest))
+```
+* 검정 데이터셋을 생성
+<br></br><br></br>
+
+```{r}
+ypred = predict(bestmod, testdat)
+table(predict=ypred, truth=testdat$y)
+```
+* cost=0.1 일때는 검정 관측치 중 19개가 올바르게 분류된다.
+<br></br><br></br>
+
+```{r}
+svmfit=svm(y~., data=dat, kernel="linear", cost=0.01, scale=FALSE)
+ypred = predict(svmfit, testdat)
+table(predict=ypred, truth=testdat$y)
+```
+* cost=0.01 일때는 검정 관측치 중 18개가 올바르게 분류된다. (cost=0.1 보다 한개 더 늘어난다.)
+<br></br><br></br>
+
+>* 이제 두 클래스가 선형적으로 분리 가능한 경우를 고려해보자.
+>* svm() 함수를 사용하여 분리 초평면을 찾을 수 있다.
+
+```{r}
+x[y==1, ] = x[y==1,]+0.5
+plot(x, col=(y+5)/2, pch=19)
+```
+
+* 모의 데이터의 2-class를 더 분리하여 선형적으로 분리가능하게 한다.
+<br></br><br></br>
+
+```{r}
+dat = data.frame(x=x, y=as.factor(y))
+svmfit = svm(y~., data=dat, kernel="linear", cost = 1e5)
+summary(svmfit)
+plot(svmfit, dat)
+```
+* 어떠한 관측치도 잘못 분류되지 않도록 아주 큰 값의 cost를 사용하여 서포트 벡터 분류기를 적합하고 결과를 초평면 그래프로 나타낸다.
+* 훈련오차는 발생하지 않았고 세 개의 서포트 벡터만 사용되었다.
+* 하지만, 그림에서 볼 수 있듯이 마진은 아주 좁다.(o 으로 표시된 서포트 벡터가 아닌 관측치들이 결정경계에 아주 가깝기 때문)
+* 이 모델은 검정 데이터에 대해 성능이 좋지 않을 것이다.
+<br></br><br></br>
+
+```{r}
+svmfit = svm(y~., data=dat, kernel="linear", cost = 1)
+summary(svmfit)
+plot(svmfit, dat)
+```
+
+* cost=1을 사용하면 훈련 관측치를 하나 잘못 분류하지만 훨씬 더 넓은 마진을 얻으며 7개의 서포트 벡터를 활용하게 된다.
+* 이모델은 cose=1e5인 모델보다 검정 데이터에 대한 성능이 더 나을 것이다.
+<br></br><br></br>
+
+###9.6.2 Support Vector Machines
+
+>* 비선형 커널을 사용하여 SVM을 적합하기 위해 다시 svm() 함수를 사용한다.
+>* 하지만, 이번에는 다른 값의 kernel 파라미터를 사용한다.
+>* 다항식 커널을 가지고 SVM을 적합하기 위해서는 kernel="polynomia"을 사용하고,
+>* 방사커널로 SVM을 적합하는 데는 kernel="radial"을 사용한다.
+>* kernel="polynomia"은 degree 인자를 사용하여 다항식 커널에 대한 차수 (식 9.22)의 d 를 지정한다.
+>* kernel="radial"의 경우에는 gamma를 사용하여 방사기커널 (식 9.24)에 대한 gamma를 지정한다.
+
+```{r}
+set.seed(1)
+x = matrix(rnorm(200*2), ncol=2)
+x[1:100,] = x[1:100,]+2
+x[101:150,] = x[101:150,]-2
+y = c(rep(1,150), rep(2,50))
+dat = data.frame(x=x, y=as.factor(y))
+plot(x, col=y)
+```
+* 비선형 클래스 경계를 가지는 데이터 생성
+* 그래프로 나타내어 보면 경계가 비선형이라는 것을 명백히 알 수 있다.
+<br></br><br></br>
+
+```{r}
+train = sample(200,100)
+svmfit = svm(y~., data=dat[train,], kernel="radial", gamma = 1, cost=1)
+plot(svmfit, dat[train,])
+```
+
+* 데이터는 랜덤으로 훈련 및 검정 그룹으로 분할한다.
+* 방사커널과 감마=1 을 가지고 svm()함수를 사용하여 훈련 데이터를 적합한다.
+* 그래프를 보면 결과 SVM은 비선형 결정경계를 갖는다는 것을 알 수 있다.
+<br></br><br></br>
+
+```{r}
+summary(svmfit)
+```
+* summary() 함수는 SVM 적합에 대한 일부 정보를 얻을 수 있다.
+<br></br><br></br>
+
+```{r}
+svmfit = svm(y~., data=dat[train,], kernel="radial", gamma=1, cost=1e5)
+plot(svmfit, dat[train,])
+```
+
+* SVM 적합에는 상상한 수의 훈련오차가 있음을 알 수 있다.
+* cost의 값을 증가시키면 훈련오차의 수를 줄일 수 있다.
+* 하지만 이것은 데이터를 과적합할 위험이 있는 더 불규칙한 결정경계를 초례한다.
+<br></br><br></br>
+
+```{r}
+set.seed(1)
+tune.out = tune(
+  svm, 
+  y~., 
+  data=dat[train,], 
+  kernel="radial", 
+  ranges=list(cost=c(0.1,1,10,100,1000)),
+  gamma = c(0.5, 1, 2, 3, 4)
+)
+summary(tune.out)
+tune.out$best.parameters
+```
+* tune()를 이용한 교차검증을 수행하여 방사커널의 SVM에 대한 최상의 gamma와 cost를 선택할 수 있다.
+* 선택된 최상의 파라미터는 cost = 1, gamma = 2 이다.
+<br></br><br></br>
+
+```{r}
+table(
+  true=dat[-train,"y"],
+  pred=predict(tune.out$best.model, newdata=dat[-train,])
+)
+(5+7)/100
+```
+* predict() 함수를 적용하면 검정셋 예측값을 확인 할 수 있다.
+* 이 모델의 검정오차율은 12% 이다.
+<br></br><br></br>
+
+###9.6.3 ROC Curves
+
+>* ROCR 패키지는 (그림 9.10)과 (그림 9.11)과 같은 ROC 곡선을 제공하는데 사용될 수 있다.
+
+```{r}
+library(ROCR)
+rocplot = function(pred, truth, ...){
+  predob = prediction(pred, truth)
+  perf = performance(predob, "tpr", "fpr")
+  plot(perf, ...)
+}
+```
+* 주어진 벡터 pred와 thuth에 대해 ROC 곡선을 그리는 함수를 작성
+* pred는 각 관측치에 대한 수치형 점수(numerical score)를 포함하는 벡터이다
+* truth는 각 관측치에 대한 클래스 라벨을 포함하는 벡터이다
+<br></br><br></br>
+
+```{r}
+svmfit.opt = svm(y~., data=dat[train,], kernel="radial", gamma=2, cost=1, decision.values=T)
+fitted = attributes(predict(svmfit.opt, dat[train,], decision.values=TRUE))$decision.values
+```
+* SVMs와 서포트 벡터 분류기는 각 관측치에 대한 클래스 라벨을 출력한다. 하지만, 각 관측치에 대한 적합 값을 얻는 것도 가능하며, 이 적합 값은 클래스 라벨을 얻는데 사용된 수치형 점수이다.
+* 비선형 커널을 가진 SVM의 경우, 적합 값을 제공하는 식은 (식 9.23)으로 주어진다. 본질적으로, 적합 값의 부호는 결정경계의 어느 쪽에 관측치가 놓이는지를 결정한다. 그러므로, 주어진 관측치에 대한 적합 값과 클래스 예측값 사이의 상관관계는 단순하다.
+* 즉, 적합 값이 0을 초과하면 관측치는 어느 한쪽의 클래스에 할당되고, 0보다 작으면 다른쪽 클래스에 할당된다.
+* 주어진 SVM 모델 적합에 대한 적합 값을 얻기 위해서는 svm()을 적합할 때 decision.values=TRUE를 사용한다. 그러면, predict() 함수가 적합 값들을 출력할 것이다.
+<br></br><br></br>
+
+```{r}
+par(mfrow=c(1,2))
+rocplot(fitted, dat[train,"y"], main="Training Data")
+```
+
+* ROC 그래프를 생성할 수 있다.
+* SVM은 정확한 예측값을 제공하는 것 같다.(왼쪽모서리에 선이 가까움.)
+<br></br><br></br>
+
+```{r}
+svmfit.flex = svm(y~., data=dat[train,], kernel="radial", gamman = 50, cost=1, decision.values=T)
+fitted = attributes(predict(svmfit.flex, dat[train,], decision.values=T))$decision.value
+rocplot(fitted, dat[train,"y"], col="red")
+```
+
+* 감마를 증가시키면 더 유연한 적합을 얻을 수있고 정확도를 더욱 개선할 수 있다.
+<br></br><br></br>
+
+```{r}
+fitted = attributes(predict(svmfit.opt, dat[-train,], decision.values=T))$decision.values
+rocplot(fitted, dat[-train,"y"], main="Test Date")
+fitted = attributes(predict(svmfit.flex, dat[-train,], decision.values=T))$decision.values
+rocplot(fitted, dat[-train,"y"], col="red")
+```
+
+* 검정 데이터에 대해 ROC 곡선을 계산하면 gamma = 2 인 모델이 가장 정확한 결과를 제공한다.
+<br></br><br></br>
+
+###9.6.4 SVM with Multiple Classes
+
+>* 반응변수가 2보다 큰 레벨을 포함하는 factor 이면 svm() 함수는 one-versus-one(일대일) 기법을 사용하여 다중클래스분류를 수행할 것이다.
+
+```{r}
+set.seed(1)
+x = rbind(x, matrix(rnorm(50*2), ncol=2))
+y = c(y, rep(0,50))
+x[y==0,2] = x[y==0,2]+2
+dat = data.frame(x=x, y=as.factor(y))
+par(mfrow=c(1,1))
+plot(x, col=(y+1))
+```
+* 관측치들이 3-class가 되도록 생성
+<br></br><br></br>
+
+```{r}
+svmfit = svm(y~., data=dat, kernel="radial", cost=10, gamma=1)
+plot(svmfit, dat)
+```
+
+* 3-class 관측치들을 svm 적합한 결과이다.
+* 만약, svm()에 전달되는 반응변수 벡터가 factor이 아니라 numerical이면 e1071 라이브러리는 서포트 벡터 회귀를 수행하는데도 사용될 수 있다.
+<br></br><br></br>
+
+###9.6.5 Application to Gene Expression Data(유전자 발현 자료에 적용)
+
+>* Khan 자료를 조사해보자.
+>* 이 자료는 종양의 4가지 유형에 대응하는 다수의 조직 표본으로 구성된다.
+>* 각 조직표본에 대해 이용할 수 있는 유전자 발현 측정치들이 있다.
+>* 자료는 훈련 데이터 Xtrain, ytrain과 검정 데이터 xtest, ytest로 구성된다.
+
+```{r}
+library(ISLR)
+names(Khan)
+dim(Khan$xtrain)
+dim(Khan$xtest)
+length(Khan$ytrain)
+length(Khan$ytest)
+table(Khan$ytrain)
+table(Khan$ytest)
+```
+* 자료의 차원 조사를 해보니
+* 2038개의 유전자 빌현 측정치(설명변수)와 훈련셋은 63개의 관측치, 검정셋은 20개의 관측치를 갖는다.
+<br></br><br></br>
+
+```{r}
+dat = data.frame(x = Khan$xtrain, y = as.factor(Khan$ytrain))
+out = svm(y~., data=dat, kernel="linear", cost=10)
+summary(out)
+table(out$fitted, dat$y)
+```
+* 유전자 발현 측정치를 이용하여 암의 하위유형(subtype)을 예측하는데 서포트벡터 기법을 사용한다.
+* 이자료에서는 관측치 수에 비해 변수의 수가 아주 큰데, 이것은 선형커널을 사용해야 함을 시사한다.
+* 왜냐하면, 다항식 또는 방사커널을 사용하여 얻게 될 추가적인 유연성이 필요하지 않기 때문이다.
+* 결과를 보면 훈련오차가 하나도 없다. 이것은 별로 놀랍지 않다.
+* 왜냐하면, 관측치 수의 비해 변수의 수가 아주 크면 클래스들을 완전히 분리하는 초평면을 찾기가 쉽기 때문이다.
+<br></br><br></br>
+
+```{r}
+dat.te = data.frame(x = Khan$xtest, y = as.factor(Khan$ytest))
+pred.te = predict(out, newdata = dat.te)
+table(pred.te, dat.te$y)
+```
+* 위 모델로 다시 검정 관측치에 적합 한다.
+* cost=10을 사용한 결과는 검정셋오차가 2개 발생한다는 것을 보여준다.
+
+
+
+
+
+
+
+
+
+
+
+
+
+

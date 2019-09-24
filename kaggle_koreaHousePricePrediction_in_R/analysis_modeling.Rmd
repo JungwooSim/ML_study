@@ -1,0 +1,700 @@
+---
+title: "Kaggle - House Price Prediction"
+author: "심정우"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+###1. 도입
+####1.1 케글 컴피션 정보
+컴피션명 : 캐글 코리아와 함께하는 2nd ML 대회 - House Price Prediction
+<br></br>
+컴피션 링크 : http://bitly.kr/5vlMjB
+<br></br>
+
+####1.2 컴피션 배경
+내 집 마련의 꿈은 누구나 가지고 있습니다. 하지만 집의 가격은 누구나 알고 있지는 않습니다.<br></br>
+집의 가격은 주거 공간의 면적, 위치, 경관, 건물의 연식 등 여러 가지 복잡한 요인의 조합에 의해 결정됩니다.<br></br>
+이번에 분석하실 데이터는 20개의 변수를 가지고 있으며, 어떤 조건을 가진 집의 가격이 높고 낮은지를 예측하는 모델을 만드는 것을 목표로 합니다.
+<br></br>
+
+####1.3 컴피션 평가 방식
+Root Mean Squared Error(RMSE)<br></br>
+![](/Users/big/Desktop/rmse.png)
+<br></br>
+
+####1.4 변수 정보
+ID : 집을 구분하는 번호<br></br>
+date : 집을 구매한 날짜<br></br>
+price : 집의 가격<br></br>
+bedrooms : 침실의 수<br></br>
+bathrooms : <br></br>
+ - 1 : 화장실, 세면대, 샤워실, 욕조<br></br>
+ - 0.75 : 화장실, 세면대, 샤워실<br></br>
+ - 0.5 : 화장실, 세면대<br></br>
+sqft_living : 주거 공간의 평방 피트(면적)<br></br>
+sqft_lot : 부지의 평방 피트(면적)<br></br>
+floors : 집의 층 수(0.5는 다락방)<br></br>
+waterfront : 집의 전방에 강이 흐르는지 유무<br></br>
+view : 집이 얼마나 좋아 보이는지의 정도<br></br>
+condition : 집의 전반적인 상태<br></br>
+grade : King County grading 시스템 기준으로 매긴 집의 등급<br></br>
+sqft_above : 지하실을 제외한 평방 피트(면적)<br></br>
+sqft_basement : 지하실의 평방 피트(면적)<br></br>
+yr_built : 지어진 년도<br></br>
+yr_renovated : 집을 재건축한 년도<br></br>
+zipcode : 우편번호<br></br>
+lat : 위도<br></br>
+long : 경도<br></br>
+sqft_living15 : 2015년 기준 주거 공간의 평방 피트(면적, 집을 재건축했다면, 변화가 있을 수 있음)<br></br>
+sqft_lot15 : 2015년 기준 부지의 평방 피트(면적, 집을 재건축했다면, 변화가 있을 수 있음)<br></br>
+
+###2. 라이브러리 로딩, 데이터 탐색, 함수 선언
+####2.1 라이브러리 로딩
+```{r message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(stringr)
+library(corrplot)
+library(data.table)
+library(gridExtra)
+library(caret)
+library(xgboost)
+library(randomForest)
+library(Ckmeans.1d.dp)
+```
+<br></br>
+
+####2.2 함수 선언
+```{r}
+rmse <- function(yi, yhat_i){
+  sqrt(mean((yi - yhat_i)^2))
+}
+```
+* RMSE 함수
+
+```{r}
+caretVariableImportanceImgView <- function(caretModel){
+  caretVarimp <- varImp(fit_lasso,scale=F)
+  
+  caretImportance <- data.frame(
+    variable=rownames(caretVarimp$importance), 
+    importance=caretVarimp$importance$Overall
+  ) %>% arrange(importance)
+  
+  caretImportance$variable <- factor(
+    caretImportance$variable, 
+    levels=caretImportance$variable, 
+    labels=caretImportance$variable
+  )
+  importanceGraph <- caretImportance %>%
+    ggplot(aes(x=variable, y=importance, fill=variable)) +
+    geom_bar(alpha=0.5, stat='identity') + 
+    coord_flip() + 
+    theme(legend.position="none")
+  
+  varsSelected <- length(which(caretImportance$importance!=0))
+  varsNotSelected <- length(which(caretImportance$importance==0))
+  selectCount <- paste('uses', varsSelected, 'variables in its model, and did not select', varsNotSelected, 'variables.')
+  
+  resultList <- list(
+    graph=importanceGraph,
+    catCount=selectCount
+  )
+  
+  return(resultList)
+}
+```
+* caret 중요 변수 출력 함수
+<br></br>
+
+####2.3 데이터 탐색
+```{r}
+test <- tbl_df(read.csv("./test.csv",stringsAsFactors=F))
+train <- tbl_df(read.csv("./train.csv",stringsAsFactors=F))
+```
+* test, train 데이터를 불러옵니다.
+<BR></BR>
+
+```{r results="hide"}
+glimpse(test) #Observations : 6468 , Variables : 20
+glimpse(train) #Observations : 15035 , Variables : 21
+names(test)
+names(train)
+```
+* test, train 데이터 구조를 확인합니다.
+<BR></BR>
+
+```{r}
+test_id <- test$id
+test$id <- NULL
+train$id <- NULL
+test$price <- NA
+all <- rbind(train, test)
+
+glimpse(all)
+```
+* 전처리를 반복하지 않도록 test, train을 하나의 데이터프레임으로 합칩니다.
+<BR></BR>
+
+###3. 탐색적 자료 분석(EDA), Feature Engineering
+
+####3.1 target-variable (price)
+
+```{r}
+shapiro.test(sample(all$price[!is.na(all$price)],5000,replace=F)) #정규성 검사
+all[!is.na(all$price),] %>%
+  ggplot(aes(x=price)) +
+  geom_histogram(fill="blue", binwidth=50000) +
+  scale_x_continuous(breaks = seq(0, 8000000, by = 400000), labels= comma)
+```
+
+* shapiro 검정을 통해 price 변수의 정규성 검증을 진행합니다. (정규성을 띄고있는 것이 확인)
+* 약간의 치우침이 있는것을 확인 됩니다.
+<BR></BR>
+
+####3.2 변수별 상관관계 분석
+```{r}
+#상관관계 분석
+numericVar <- which(sapply(all[!is.na(all$price),], is.numeric))
+numericVarNames <- names(numericVar)
+all_numVar <- all[, numericVar]
+cor_numVar <- cor(all_numVar, use='pairwise.complete.obs')
+cor_sorted <- as.matrix(sort(cor_numVar[, 'price'], decreasing = TRUE))
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x) > 0.4)))
+cor_numVar <- cor_numVar[CorHigh, CorHigh]
+corrplot.mixed(cor_numVar, tl.col='black', tl.pos='lt')
+```
+
+* 화장실 수, 전망, 면적, 집 등급이 가격에 영향을 주는 것이 보입니다.
+* 그뿐만 아니라 다른 변수들 간의 상관관계도 알 수 있습니다.
+* 추후 계속 확인하면서 분석 진행 할 예정입니다.
+<BR></BR>
+
+####3.3 date
+```{r}
+head(all$date)
+class(all$date)
+
+all$date %>% sort(decreasing = T) %>% head
+all$date %>% sort(decreasing = F) %>% head
+all$date <- gsub('T.*','',all$date,ignore.case=TRUE) #문자열 치환, ignore.case=TRUE 옵션은 대소문자 구분
+
+all$date_yyyy <- substr(all$date,1,4)
+all$date_mm <- substr(all$date,5,6)
+all$date_dd <- substr(all$date,7,8)
+all$date_yyyymm <- substr(all$date,1,6)
+```
+* date 변수 구조 파악 후 중복되는 부분과 다양한 분석을 진행하기 위해 전처리하였습니다.
+* date 변수를 년, 월, 일로 구분하였습니다.
+<BR></BR>
+
+```{r}
+all[!is.na(all$price),] %>%
+  ggplot(aes(x=date_yyyymm,price)) +
+  geom_bar(stat='summary', fun.y = "median", fill='blue') +
+  scale_y_continuous(breaks= seq(0, 5000000, by=25000), labels = comma) +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..))
+
+temp_p1 <-
+  all[!is.na(all$price),] %>%
+  filter(date_yyyymm == 201405) %>%
+  ggplot(aes(x=date_dd)) +
+  geom_bar(stat='count',fill='blue') +
+  ggtitle("2014-05")
+
+temp_p2 <-
+  all[!is.na(all$price),] %>%
+  filter(date_yyyymm == 201505) %>%
+  ggplot(aes(x=date_dd)) +
+  geom_bar(stat='count',fill='blue') +
+  ggtitle("2015-05")
+
+grid.arrange(temp_p1, temp_p2)
+```
+
+* date 변수의 범위는 2014-05 ~ 2015-05로 구성되어 있습니다.
+* 중복되는 월은 2014-05와 2015-05가 있고 거래가 된 양이 약 3배 차이가 나는 것을 확인했습니다.
+* 2014-05와 2015-05의 차이 나는 이유를 추측해봤을때
+* 2015-05-15부터 거래자료가 없고, 거래자료가 없기 전 약 4일 동안은 거래개수가 떨어지는 것을 확인할 수 있습니다.
+* 아마도, 거래자료가 없기 전 약 4일 동안은 어차피? 조사가 끝나니까 대충 하지 않았나 싶습니다.
+<BR></BR>
+
+####3.4 bathrooms, bedrooms
+```{r}
+table(all$bathrooms)
+all %>% select(bathrooms) %>% summary()
+table(all$bedrooms)
+all %>% select(bedrooms) %>% summary()
+```
+<BR></BR>
+
+```{r}
+all %>% filter(bedrooms >= 10)
+```
+<BR></BR>
+
+```{r}
+all %>%
+  ggplot(aes(x = bathrooms, y = bedrooms)) +
+  geom_point() +
+  scale_x_continuous(breaks= seq(0, 8, by=.25)) +
+  scale_y_continuous(breaks= seq(0, 40, by=1)) +
+  stat_smooth(method=lm)
+
+cor(all$bathrooms, all$bedrooms)
+```
+
+* 화장실 개수에 비해 방 개수가 많은 레코드를 확인할 수 있습니다. (test set에서 나온 레코드로 확인하였습니다.)
+* 두 변수의 상관관계 수치는 0.51이므로 연관 있어 보입니다.
+<BR></BR>
+
+####3.5 yr_built, yr_renovated
+```{r}
+all %>% select(yr_built,yr_renovated) %>% summary()
+all %>% select(yr_built,yr_renovated) %>% head()
+all %>% select(yr_renovated) %>% table()
+all %>% select(yr_built,yr_renovated) %>% filter(yr_renovated != 0) #리모델링 한 집 구분
+
+all$yr_renovated_state <- ifelse(all$yr_renovated == 0, 0, 1) #리모델링 구분 값 추가
+table(all$yr_renovated_state)
+```
+* 분석에 용이하게 재개발 여부를 구분할 수 있는 구분값(변수)를 추가하였습니다.
+<BR></BR>
+
+```{r}
+all %>% select(yr_built,yr_renovated,price,yr_renovated_state) %>% filter(!is.na(price)) %>%
+  ggplot(aes(x=factor(yr_renovated_state),y=price)) +
+  geom_boxplot() +
+  geom_jitter(col='gray') +
+  geom_boxplot(alpha=.5) +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma)
+```
+
+* 그래프를 통해 재개발 한 집이 비싼 시세를 갖는 것을 확인할 수 있습니다.
+<br></br>
+
+```{r}
+t.test(all$price[all$yr_renovated_state == 0],all$price[all$yr_renovated_state == 1],conf.level=0.95)
+```
+* 재개발한 집값과 그렇지 않은 집값의 **평균의 차이를 검정해보니 유의한 것을 알 수 있음.**
+<br></br>
+
+```{r}
+all$yr_built_edit <- ifelse(all$yr_renovated == 0, all$yr_built, all$yr_renovated)
+
+all %>%
+  filter(!is.na(price)) %>%
+  ggplot(aes(x = yr_built_edit, y = price)) +
+  geom_point() +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma) +
+  stat_smooth(method=lm)
+```
+
+* 재건축 여부를 기준으로 yr_built_edit 변수 생성하였습니다.
+* 2000년도에 짓거나 재건축한 건물이 조금 더 비싼 것을 알 수 있습니다.
+
+####3.6 sqft_living, sqft_living15
+```{r}
+all %>% select(sqft_living,sqft_living15) %>% summary()
+all %>% select(sqft_living,sqft_living15) %>% head()
+```
+
+```{r}
+all %>% select(sqft_living,sqft_living15) %>% filter(sqft_living != sqft_living15) #면적이 바뀐 리스트 확인
+
+all$sqft_living_state <- ifelse(all$sqft_living == all$sqft_living15, 0, 1) # 면적 바뀐 집 구분값 추가
+all$sqft_living_edit <- ifelse(all$sqft_living == all$sqft_living15, all$sqft_living, all$sqft_living15) #면적 수정 값 추가
+
+table(all$sqft_living_state)
+table(all$yr_renovated_state)
+```
+
+* 분석에 용이하도록 면적이 바뀐 유무 구분 값과 면적이 바뀐 유무를 기준으로 sqft_living_edit 변수 생성하였습니다.
+* yr_renovated(재건축연도)의 개수와 sqft_living(면적)이 바뀐 집의 수가 차이가 크게 나는 것을 알 수 있습니다. (분석하면서 고려해봐야 할 것 같습니다.)
+<br></br>
+
+```{r}
+all %>% select(sqft_living_state,price) %>% filter(!is.na(price)) %>%
+  ggplot(aes(x=factor(sqft_living_state),y=price)) +
+  geom_jitter(col='gray') +
+  geom_boxplot(alpha=.5) +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma)
+
+all %>% select(price,sqft_living_state) %>% filter(!is.na(price) & sqft_living_state == 1) %>% summary()
+all %>% select(price,sqft_living_state) %>% filter(!is.na(price) & sqft_living_state == 0) %>% summary()
+```
+
+* 재건축을 진행한 집이 조금 더 높은 사분위 수를 보이고, 그래프를 통해 분산이 큰 것을 알 수 있습니다.
+
+```{r}
+t.test(all$price[all$sqft_living_state == 0],all$price[all$sqft_living_state == 1],conf.level=0.95)
+```
+
+* 그래프를 통해 재개발 한 집이 비싸게 팔리는 것을 알 수 있습니다.
+* 정규성 검사(샤피론) 결과 가격은 정규성을 만족하고 있는 것을 알고 있으므로, 재개발 한  집값과 그렇지 않은 집값의 **평균의 차이를 검정해보니 유의한 것을 알 수 있습니다.**
+
+```{r}
+all %>%
+  filter(!is.na(price)) %>%
+  ggplot(aes(x = sqft_living_edit, y = price)) +
+  geom_point() +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma) +
+  stat_smooth(method=lm)
+```
+
+####3.7 sqft_lot, sqft_lot15
+```{r}
+all %>% select(sqft_lot,sqft_lot15) %>% summary()
+all %>% select(sqft_lot,sqft_lot15) %>% head()
+```
+
+```{r}
+all %>% select(sqft_lot,sqft_lot15) %>% filter(sqft_lot != sqft_lot15) #부지 면적이 바뀐 리스트 확인
+all$sqft_lot_state <- ifelse(all$sqft_lot == all$sqft_lot15, 0, 1) # 부지 면적 바뀐 집 구분값 추가
+all$sqft_lot_edit <- ifelse(all$sqft_lot == all$sqft_lot15, all$sqft_lot, all$sqft_lot15) #부지 면적 수정 값 추가
+table(all$sqft_lot_state)
+```
+* 분석에 용이하도록 부지 면적 변경된 집 구분 값을 추가하였습니다.
+* 부지 면적이 바뀐 집 기준으로 부지 면적 값(변수) sqft_lot_edit 생성하였습니다.
+
+```{r}
+all %>% select(sqft_lot_state,price) %>% filter(!is.na(price)) %>%
+  ggplot(aes(x=factor(sqft_lot_state),y=price)) +
+  geom_jitter(col='gray') +
+  geom_boxplot(alpha=.5) +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma)
+
+all %>% select(price,sqft_lot_state) %>% filter(!is.na(price) & sqft_lot_state == 1) %>% summary()
+all %>% select(price,sqft_lot_state) %>% filter(!is.na(price) & sqft_lot_state == 0) %>% summary()
+```
+
+* summary로 보았을 때는 별 차이가 없어 보입니다.
+* 그래프로 보았을 때는 부지 면적이 바뀐 집은 가격 분산이 크다는 것을 알 수 있습니다.
+
+```{r}
+t.test(all$price[all$sqft_lot_state == 0],all$price[all$sqft_lot_state == 1],conf.level=0.95)
+```
+* 부지 면적이 바뀐 집과 바뀌지 않은 집의 **평균의 차이는 유의미 해입니다.**
+
+```{r}
+all %>%
+  filter(!is.na(price)) %>%
+  ggplot(aes(x = sqft_lot_edit, y = price)) +
+  geom_point() +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma) +
+  stat_smooth(method=lm)
+
+cor(all$sqft_lot_edit, all$price, use='pairwise.complete.obs')
+```
+
+<BR></BR>
+
+####3.8 면적을 나타내는 변수들(sqft_above, sqft_basement, sqft_living, sqft_lot)
+```{r}
+all %>% 
+  select(sqft_living,sqft_living_edit,sqft_lot, sqft_lot_edit, sqft_above, sqft_basement) %>%
+  mutate(
+    above_basement_sum = sqft_above+sqft_basement
+  ) %>%
+  summary()
+
+cor(all$sqft_living, (all$sqft_above+all$sqft_basement)) # 두 변수가 동일한지 확인
+```
+* 상관계수를 통해 *2015년 이전* 주거 공간 면적 = 지하실을 제외한 면적 + 지하실 면적임을 알 수 있습니다.
+<BR></BR>
+
+####3.9 floors
+```{r}
+all %>% select(floors) %>% summary()
+all %>% select(price,floors) %>% filter(!is.na(price)) %>%
+  ggplot(aes(x=factor(floors),y=price)) +
+  geom_boxplot() +
+  geom_label(stat='count', aes(label= ..count.., y= ..count..)) +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma)
+```
+
+* 1층, 2층 집의 개수가 많습니다.
+* 다락방이 있는 집은 전반적으로 가격이 올라가는 것을 알 수 있습니다.
+* 3층은 2.5층(다락방포함)에 비해 전반적인 가격은 내려가지만 3Q 이상인 가격이 많이 있는 것을 알 수 있습니다.
+<BR></BR>
+
+####3.10 waterfront
+```{r}
+all %>% select(waterfront) %>% table()
+all %>% select(price,waterfront) %>% filter(!is.na(price)) %>%
+  ggplot(aes(x=factor(waterfront),y=price)) +
+  geom_boxplot() +
+  geom_label(stat='count', aes(label= ..count.., y= ..count..)) +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma)
+
+all %>% select(price,waterfront) %>% filter(waterfront==0) %>% summary()
+```
+
+* 리버뷰 집값이 더 비싼 것을 확인할 수 있습니다.
+* 리버뷰가 아닌 집이 대부분인 것을 알 수 있습니다.
+<BR></BR><BR></BR>
+
+####3.11 view(집 외관)
+```{r}
+all %>% select(view) %>% table()
+all %>% select(price,view) %>% filter(!is.na(price)) %>%
+  ggplot(aes(x=factor(view),y=price)) +
+  geom_boxplot() +
+  geom_label(stat='count', aes(label= ..count.., y= ..count..)) +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma)
+view_summary <- list()
+for(i in 0:4){
+  view_summary[[i+1]] <- all %>% filter(view==i & !is.na(price)) %>% select(price) %>% summary()
+  #test <- rbind(tset, test)
+}
+print(view_summary)
+```
+
+* 등급 1~4는 등급 0보다 크다는 것을 확연히 알 수 있습니다.
+<BR></BR>
+
+####3.12 condition
+```{r}
+all %>% select(condition) %>% table()
+all %>% select(price,condition) %>% filter(!is.na(price)) %>%
+  ggplot(aes(x=factor(condition),y=price)) +
+  geom_boxplot() +
+  geom_label(stat='count', aes(label= ..count.., y= ..count..)) +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma)
+condition_summary <- list()
+for(i in 1:5){
+  condition_summary[[i]] <- all %>% filter(condition==i & !is.na(price)) %>% select(price) %>% summary()
+}
+print(condition_summary)
+```
+* 1,2 등급의 비중이 적은걸 알 수 있습니다.
+<BR></BR>
+
+####3.13 zipcode
+```{r}
+zipcode_group <-
+all %>%
+  group_by(zipcode) %>%
+  summarize(
+    mean_price = mean(price,na.rm = TRUE),
+    median_price = median(price,na.rm = TRUE),
+    cnt = n()
+  ) %>%
+  arrange(median_price) %>%
+  mutate(
+    cum_cnt = cumsum(cnt), #누적합
+    zipcode_group = factor(ntile(cum_cnt, 10)) #n 개의 동일한 개수로 데이터셋 나눔
+  ) %>%
+  select(zipcode,zipcode_group)
+
+all <- left_join(all,zipcode_group, by=c("zipcode"))
+```
+* 우리나라와 동일하게 지역마다 주택 가격이 상의할 것으로 예상하고, zipcode별 중앙값으로 정렬 후 10개의 등급으로 구분하였습니다.
+<br></br>
+
+####3.14 grade
+```{r}
+all %>% select(grade) %>% table()
+all %>% select(price,grade) %>% filter(!is.na(price)) %>%
+  ggplot(aes(x=factor(grade),y=price)) +
+  geom_boxplot() +
+  geom_label(stat='count', aes(label= ..count.., y= ..count..)) +
+  scale_y_continuous(breaks= seq(0,8000000, by=500000), labels=comma)
+```
+
+* 등급이 높을수록 집 가격이 올라가는 것이 두드러져 보입니다. (변수 중 가장 가격을 잘 나타내는 것 같습니다.)
+<br></br>
+
+#####3.1.1 이상치 확인
+```{r}
+all %>%
+  mutate(
+    UpperQ = fivenum(price)[4],
+    LowerQ = fivenum(price)[2],
+    IQR = UpperQ - LowerQ
+  ) %>%
+  filter(
+    price > (UpperQ+IQR*1.5) & grade == 7 & !is.na(price)
+  ) %>% arrange(desc(price))
+
+all %>%
+  filter(
+    price >= 2050000 & sqft_living <= 4000 & sqft_living >= 3500
+  ) %>% arrange(price)
+```
+* 집 등급(grade)이 7등급인 이상치를 집들을 확인해본 결과, 최고 금액(2,050,000)을 가진 집과 비슷한 면적을 가진 집을 비교해보니 변수 대부분은 비슷하고 높은 view를 가지고 있는 것을 알 수 있습니다.
+* 높은 view로 인해 등급 대비 높은 가격에 거래되고 있을 수도 있다고 판단됩니다.
+<br></br>
+
+```{r}
+all %>%
+  mutate(
+    UpperQ = fivenum(price)[4],
+    LowerQ = fivenum(price)[2],
+    IQR = UpperQ - LowerQ
+  ) %>%
+  filter(
+    price > (UpperQ+IQR*1.5) & grade == 8 & !is.na(price)
+  ) %>% 
+  arrange(desc(price)) %>%
+  select(date,price,bedrooms,bathrooms,sqft_living,sqft_lot,view,zipcode_group)
+```
+* 집 등급(grade)이 8등급 중 가장 비싼 집(2,700,000)은 두 번째 집보다 비싼 구역에 살고 있으며 다른 집들보다 면적이 큰 것을 알 수 있습니다.
+* view와 zipcode_group이 동일한 집의 시세를 보면 이상한 값이라고 생각이 안 듭니다.
+<br></br>
+
+```{r}
+all %>%
+  mutate(
+    UpperQ = fivenum(price)[4],
+    LowerQ = fivenum(price)[2],
+    IQR = UpperQ - LowerQ
+  ) %>%
+  filter(
+    price > (UpperQ+IQR*1.5) & grade == 11 & !is.na(price)
+  ) %>% 
+  arrange(desc(price)) %>%
+  select(date,price,bedrooms,bathrooms,sqft_living,sqft_lot,view,zipcode_group)
+```
+* 집 등급(grade)이 11등급 중 가장 비싼 집은 평수(sqft_living)가 굉장히 큰 것을 알 수 있습니다.
+<br></br>
+
+```{r}
+all %>%
+  mutate(
+    UpperQ = fivenum(price)[4],
+    LowerQ = fivenum(price)[2],
+    IQR = UpperQ - LowerQ
+  ) %>%
+  filter(
+    price > (UpperQ+IQR*1.5) & grade == 12 & !is.na(price)
+  ) %>% 
+  arrange(desc(price)) %>%
+  select(date,price,bedrooms,bathrooms,sqft_living,sqft_lot,view,zipcode_group)
+```
+* 집 등급(grade)이 12등급에서는 별다른 특잇값이 보이지 않습니다.
+<BR></BR>
+
+###4. 모델링을 위한 데이터 준비
+####4.1 랜덤 포레스트를 통해 중요 변수 확인
+```{r}
+set.seed(2018)
+quick_RF <- randomForest(x=all[!is.na(all$price),-2], y=all[!is.na(all$price),]$price, ntree=100,importance=TRUE)
+imp_RF <- importance(quick_RF)
+imp_DF <- data.frame(Variables = row.names(imp_RF), MSE = imp_RF[,1])
+imp_DF <- imp_DF[order(imp_DF$MSE, decreasing = TRUE),]
+
+ggplot(imp_DF, aes(x=reorder(Variables, MSE), y=MSE, fill=MSE)) +
+  geom_bar(stat = 'identity') +
+  labs(x = 'Variables', y= '% increase MSE if variable is randomly permuted') +
+  coord_flip() +
+  theme(legend.position="none")
+```
+
+* 집값에 영향을 미치는 변수룰 확인할 수 있습니다.
+<br></br>
+
+####4.2 Lasso 모델 데이터 준비
+```{r}
+lasso_fitting_data <- all[!is.na(all$price),c('lat','long', 'yr_built', 'sqft_living', 'zipcode', 'grade', 'sqft_living15', 'sqft_lot15', 'view', 'sqft_lot', 'waterfront' ,'sqft_above', 'floors', 'condition', 'bedrooms', 'sqft_basement', 'bathrooms', 'date_yyyymm','zipcode_group')]
+
+lasso_fitting_data <- model.matrix(~.-1, data=lasso_fitting_data)
+```
+* 설명변수를 최소화하기위해 겹치거나, 중요도가 떨어지는 변수는 제외합니다.
+<br></br>
+
+####4.2 XGBoosting 모델 데이터 준비
+```{r}
+XGB_fitting_data <- all[!is.na(all$price),c('lat','long' ,'yr_built' ,'sqft_living', 'zipcode' ,'grade' ,'sqft_living15' ,'sqft_lot15' ,'view' ,'sqft_lot' ,'waterfront' ,'sqft_above' ,'floors' ,'condition' ,'bedrooms', 'sqft_basement', 'bathrooms', 'date_yyyymm','zipcode_group')]
+
+XGB_fitting_data$date_yyyymm <- as.numeric(XGB_fitting_data$date_yyyymm)
+XGB_fitting_data$zipcode_group <- as.numeric(XGB_fitting_data$zipcode_group)
+```
+<br></br>
+
+###5. 모델링
+####5.1 Lasso
+```{r}
+la_control <- trainControl(method="cv", number=5)
+tune_grid <- expand.grid(alpha = 1, lambda = c(0.00001, 0.0001, 0.001, 0.01, 0.1)) #alpha=0 ridge, alpha=1 lasso
+
+fit_lasso <- train(
+  x = lasso_fitting_data,
+  y = all$price[!is.na(all$price)],
+  method="glmnet",
+  trControl = la_control,
+  tuneGrid = tune_grid
+)
+
+fit_lasso$bestTune
+```
+<br></br>
+
+```{r}
+RMSE(predict(fit_lasso, lasso_fitting_data), all$price[!is.na(all$price)])
+```
+* 훈련셋으로 RMSE 확인합니다.
+
+```{r}
+fit_lasso_variable_info <- caretVariableImportanceImgView(fit_lasso)
+fit_lasso_variable_info$graph
+fit_lasso_variable_info$catCount
+```
+
+* 변수 중요도 확인합니다.
+
+####5.2 XGBoosting
+```{r}
+xgb_grid = expand.grid(
+  nrounds = 1000,
+  eta = c(0.1, 0.05),
+  max_depth = c(2, 3, 4),
+  gamma = 0,
+  colsample_bytree=1,
+  min_child_weight=c(1, 2, 3, 4),
+  subsample=1
+)
+
+my_control <- trainControl(method="cv", number = 5, verboseIter = T, returnData = F)
+#fit_xgb <- train(x=XGB_fitting_data, y=all$price[!is.na(all$price)], method='xgbTree', trControl= my_control, tuneGrid=xgb_grid)
+#fit_xgb$bestTune
+
+# max_depth = 4
+# eta = 0.1
+# min_child_weight = 2
+
+dtrain <- xgb.DMatrix(data = as.matrix(XGB_fitting_data), label=all$price[!is.na(all$price)])
+
+default_param<-list(
+  objective = "reg:linear",
+  booster = "gbtree",
+  eta=0.1, #default = 0.3
+  gamma=0,
+  max_depth=4, #default=6
+  min_child_weight=2, #default=1
+  subsample=1,
+  colsample_bytree=1
+)
+
+xgbcv <- xgb.cv( params = default_param, data = dtrain, nrounds = 500, nfold = 5, showsd = T, stratified = T, print_every_n = 40, early_stopping_rounds = 10, maximize = F)
+xgb_mod <- xgb.train(data = dtrain, params=default_param, nrounds = 276)
+```
+```{r}
+RMSE(predict(xgb_mod, dtrain), all$price[!is.na(all$price)])
+```
+* 훈련셋으로 RMSE 확인합니다.
+<br></br>
+
+```{r}
+mat <- xgb.importance (feature_names = colnames(dtrain),model = xgb_mod)
+xgb.ggplot.importance(importance_matrix = mat, rel_to_first = TRUE)
+```
+
+* 변수 중요도 확인합니다.
+
+
+

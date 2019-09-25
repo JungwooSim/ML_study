@@ -5,7 +5,7 @@
 train.csv의 price를 활용하여 지도학습 후 test.csv의 price을 예측<BR><BR>
 <h2>평가방식</h2>
 RMSE (Root Mean Squared Error)<BR>
-$${\sqrt{ {1 \over N} \sum{(y - \hat{y})}^2}} $$<BR><BR>
+![](./rmse.png)<BR><BR>
 <h2>Data</h2>
 train.csv : 예측 모델을 만들기 위해 사용하는 학습 데이터<BR>
 test.csv : 예측할 price 변수를 제외한 집의 정보가 담긴 테스트 데이터(예측 데이터)<BR>
